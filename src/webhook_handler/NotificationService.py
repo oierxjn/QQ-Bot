@@ -76,7 +76,7 @@ class NotificationService:
         try:
             if config.forward:
                 if isinstance(data, GiteaIssueCommentEvent):
-                    await self._send_issue_comment_notification(data, event_type)
+                    await self._send_issue_comment_notification(data)
                 elif isinstance(data, GiteaIssuesEvent):
                     await self._send_issues_notification(data, event_type)
                 else:
@@ -191,49 +191,21 @@ class NotificationService:
                 Log.warning(f"未知内容段类型：{type(seg)} : {str(seg)}")
         return result
 
-    async def _send_issue_comment_notification(
-        self, data: GiteaIssueCommentEvent, event_type: str
-    ) -> None:
+    async def _send_issue_comment_notification(self, data: GiteaIssueCommentEvent) -> None:
         temp_dir = Path(tempfile.mkdtemp(prefix="gitea_img_"))
         try:
-            # 1. 构建混合消息 文本 + 图片 + 附件
-            segments = _parse_comment_segments(
-                data.comment.body or "",
-                data.comment.assets,
-                data.repository.html_url,
-                self.gitea_api_url,
+            # 首条消息只报"谁动了评论"一句话；评论正文、图片和 issue 上下文都在随后的合并转发里
+            action_text = {
+                "created": "New comment",
+                "edited": "comment edited",
+                "deleted": "comment deleted",
+            }.get(data.action, data.action)
+            await api.asyncGroupService.send_group_msg(
+                group_id=self.response_group,
+                message=f"[高程答疑平台] {action_text} by {data.sender.login}",
             )
-            images = _extract_images(segments)
-            path_map = await self._download_images(images, temp_dir) if images else {}
 
-            event_name = event_type or "issue_comment"
-            target = "pull request" if data.is_pull else "issue"
-            msg: list[dict] = [
-                {
-                    "type": "text",
-                    "data": {
-                        "text": (
-                            f"[Gitea] {event_name} on {target} #{data.issue.number}"
-                            f" {data.action} in {data.repository.full_name}\n"
-                            f"{data.issue.title}\n"
-                        )
-                    },
-                },
-            ]
-            comment_author = data.comment.original_author or data.comment.user.login
-            msg.extend(
-                self._node_segments(
-                    ContentNode(
-                        sender_name="",
-                        segments=prepend_author_block(comment_author, segments),
-                    ),
-                    path_map,
-                )
-            )
-            msg.append({"type": "text", "data": {"text": f"\nurl: {data.comment.html_url}"}})
-            await api.asyncGroupService.send_group_msg(group_id=self.response_group, message=msg)
-
-            # 2. 拉取历史评论并发送合并转发
+            # 拉取历史评论并发送合并转发
             comments = await self.gitea.list_issue_comments(
                 data.repository.full_name, data.issue.number
             )

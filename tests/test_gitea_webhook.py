@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from src.gitea.GiteaEventFormatter import GiteaEventFormatter
-from src.gitea.Models import GiteaIssueCommentEvent, GiteaIssuesEvent, GiteaPushEvent
+from src.gitea.Models import Comment, GiteaIssueCommentEvent, GiteaIssuesEvent, GiteaPushEvent
 from src.webhook_handler.EventConfig import EVENT_CONFIG
 from src.webhook_handler.WebhookHandler import WebhookHandler, parse_gitea_event
 
@@ -394,3 +394,60 @@ def test_issue_formatter_keeps_body_and_lists_attachments_separately():
 
     assert "body ![img](/attachments/uuid)" in message
     assert "pic.png: https://gitea.example.com/attachments/uuid" in message
+
+
+@pytest.mark.asyncio
+async def test_issue_comment_first_message_is_slim_summary_and_forward_keeps_context():
+    """
+    issue_comment 首条消息只报一句话摘要；评论正文与 issue 上下文都放进合并转发。
+    """
+    payload = issue_comment_payload()
+    payload["comment"]["user"] = user_payload("bob")
+    payload["sender"] = user_payload("bob")
+    event = GiteaIssueCommentEvent.model_validate(payload)
+    new_comment = Comment.model_validate(payload["comment"])
+
+    with patch("src.Api.api.asyncGroupService", new=AsyncMock()) as async_service:
+        handler = WebhookHandler(123, GITEA_API_URL, GITEA_API_TOKEN)
+        handler.notification_service.gitea.list_issue_comments = AsyncMock(
+            return_value=[new_comment]
+        )
+        await handler.resolve(event, "issue_comment", EVENT_CONFIG["issue_comment"])
+
+    async_service.send_group_msg.assert_awaited_once()
+    first_message = async_service.send_group_msg.await_args.kwargs["message"]
+    assert first_message == "[高程答疑平台] New comment by bob"
+
+    async_service.send_group_forward_msg.assert_awaited_once()
+    forward_message = async_service.send_group_forward_msg.await_args.kwargs["forward_message"]
+    assert forward_message[0]["data"]["content"][0]["data"]["text"] == (
+        "[Gitea] issue_comment on issue #1 in org/repo\n"
+        "Title: Fix webhook\n"
+        "Author: alice\n"
+        "Labels: bug"
+    )
+    # 新评论也在转发节点中，带作者块
+    assert forward_message[2]["data"]["name"] == "bob"
+    assert forward_message[2]["data"]["content"][0]["data"]["text"] == "bob\n---\n"
+    assert forward_message[2]["data"]["content"][1]["data"]["text"] == "comment body\n\n"
+
+
+@pytest.mark.asyncio
+async def test_issue_comment_edited_first_message_names_the_actor():
+    """
+    edited 事件的 by 取 sender（实际编辑者）；管理员代改他人评论时显示管理员。
+    """
+    payload = issue_comment_payload()
+    payload["action"] = "edited"
+    payload["comment"]["user"] = user_payload("alice")
+    payload["sender"] = user_payload("bob")
+    event = GiteaIssueCommentEvent.model_validate(payload)
+
+    with patch("src.Api.api.asyncGroupService", new=AsyncMock()) as async_service:
+        handler = WebhookHandler(123, GITEA_API_URL, GITEA_API_TOKEN)
+        handler.notification_service.gitea.list_issue_comments = AsyncMock(return_value=[])
+        await handler.resolve(event, "issue_comment", EVENT_CONFIG["issue_comment"])
+
+    async_service.send_group_msg.assert_awaited_once()
+    first_message = async_service.send_group_msg.await_args.kwargs["message"]
+    assert first_message == "[高程答疑平台] comment edited by bob"
