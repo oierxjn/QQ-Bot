@@ -337,7 +337,7 @@ async def test_issue_closed_sends_single_line_without_forward():
     """
     payload = issues_payload()
     payload["action"] = "closed"
-    payload["sender"] = user_payload("bob")
+    payload["sender"] = user_payload("bob") | {"full_name": "李四"}
     event = GiteaIssuesEvent.model_validate(payload)
 
     with patch("src.Api.api.asyncGroupService", new=AsyncMock()) as async_service:
@@ -347,7 +347,7 @@ async def test_issue_closed_sends_single_line_without_forward():
 
     async_service.send_group_msg.assert_awaited_once_with(
         group_id=123,
-        message="[高程答疑平台] Issue #1 closed by bob",
+        message="[高程答疑平台] Issue #1 closed by 李四",
     )
     async_service.send_group_forward_msg.assert_not_called()
 
@@ -464,7 +464,7 @@ async def test_issue_comment_first_message_is_slim_summary_and_forward_keeps_con
     """
     payload = issue_comment_payload()
     payload["comment"]["user"] = user_payload("bob")
-    payload["sender"] = user_payload("bob")
+    payload["sender"] = user_payload("bob") | {"full_name": "张三"}
     event = GiteaIssueCommentEvent.model_validate(payload)
     new_comment = Comment.model_validate(payload["comment"])
 
@@ -478,14 +478,14 @@ async def test_issue_comment_first_message_is_slim_summary_and_forward_keeps_con
     async_service.send_group_msg.assert_awaited_once()
     first_message = async_service.send_group_msg.await_args.kwargs["message"]
     assert first_message == (
-        "[高程答疑平台] New comment by bob\n"
+        "[高程答疑平台] New comment by 张三\n"
         "url: https://gitea.example.com/org/repo/issues/1#comment-300"
     )
 
     async_service.send_group_forward_msg.assert_awaited_once()
     forward_message = async_service.send_group_forward_msg.await_args.kwargs["forward_message"]
     assert forward_message[0]["data"]["content"][0]["data"]["text"] == (
-        "[高程答疑平台] New comment by bob\nTitle: Fix webhook\nAuthor: alice\nLabels: bug"
+        "[高程答疑平台] New comment by 张三\nTitle: Fix webhook\nAuthor: alice\nLabels: bug"
     )
     # 新评论也在转发节点中，带作者块
     assert forward_message[2]["data"]["name"] == "bob"
@@ -497,11 +497,12 @@ async def test_issue_comment_first_message_is_slim_summary_and_forward_keeps_con
 async def test_issue_comment_edited_first_message_names_the_actor():
     """
     edited 事件的 by 取 sender（实际编辑者）；管理员代改他人评论时显示管理员。
+    full_name 未设置（空白）时回退展示 login。
     """
     payload = issue_comment_payload()
     payload["action"] = "edited"
     payload["comment"]["user"] = user_payload("alice")
-    payload["sender"] = user_payload("bob")
+    payload["sender"] = user_payload("bob") | {"full_name": "  "}
     event = GiteaIssueCommentEvent.model_validate(payload)
 
     with patch("src.Api.api.asyncGroupService", new=AsyncMock()) as async_service:

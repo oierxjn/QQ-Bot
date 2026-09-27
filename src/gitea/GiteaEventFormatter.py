@@ -11,6 +11,7 @@ from src.gitea.Models import (
     GiteaPushEvent,
     GiteaWebhookEvent,
     Issue,
+    User,
 )
 from utils.TextUtils import format_size
 
@@ -222,9 +223,22 @@ def issue_comment_action_text(action: str) -> str:
     return f"comment {action}"
 
 
+def _display_name(user: User) -> str:
+    """用户的展示名：优先 full_name，未设置或空白时回退 login。"""
+    full_name = (user.full_name or "").strip()
+    return full_name or user.login
+
+
+def issue_comment_notice_text(event: GiteaIssueCommentEvent) -> str:
+    """issue_comment 事件的通知摘要行（首条消息与合并转发头共用），不含链接。"""
+    return (
+        f"[高程答疑平台] {issue_comment_action_text(event.action)} by {_display_name(event.sender)}"
+    )
+
+
 def issues_notice_text(event: GiteaIssuesEvent) -> str:
     """issues 事件的通知摘要行（首条消息与合并转发头共用），不含链接。"""
-    return f"[高程答疑平台] Issue #{event.number} {event.action} by {event.sender.login}"
+    return f"[高程答疑平台] Issue #{event.number} {event.action} by {_display_name(event.sender)}"
 
 
 def _label_text(event_or_issue: GiteaIssuesEvent | Issue) -> str:
@@ -396,7 +410,7 @@ class GiteaEventFormatter:
 
         header_text = "\n".join(
             [
-                f"[高程答疑平台] {issue_comment_action_text(event.action)} by {event.sender.login}",
+                issue_comment_notice_text(event),
                 f"Title: {event.issue.title}",
                 f"Author: {_issue_author(event.issue)}",
                 f"Labels: {_label_text(event.issue)}",

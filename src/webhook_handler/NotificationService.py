@@ -22,7 +22,7 @@ from src.gitea.GiteaEventFormatter import (
     TextSegment,
     _extract_images,
     _parse_comment_segments,
-    issue_comment_action_text,
+    issue_comment_notice_text,
     issues_notice_text,
 )
 from src.gitea.Models import GiteaIssueCommentEvent, GiteaIssuesEvent, GiteaWebhookEvent
@@ -198,11 +198,7 @@ class NotificationService:
             # 评论正文、图片和 issue 上下文都在随后的合并转发里
             await api.asyncGroupService.send_group_msg(
                 group_id=self.response_group,
-                message=(
-                    f"[高程答疑平台] {issue_comment_action_text(data.action)}"
-                    f" by {data.sender.login}\n"
-                    f"url: {data.comment.html_url}"
-                ),
+                message=(f"{issue_comment_notice_text(data)}\nurl: {data.comment.html_url}"),
             )
 
             # 拉取历史评论并发送合并转发
