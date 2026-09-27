@@ -251,7 +251,8 @@ async def test_issues_event_sends_mixed_message_and_three_node_forward_message()
     assert forward_message[0]["type"] == "node"
     assert forward_message[0]["data"]["name"] == "Gitea"
     assert (
-        "issues #1 opened in org/repo" in forward_message[0]["data"]["content"][0]["data"]["text"]
+        "[高程答疑平台] Issue #1 opened by alice"
+        in forward_message[0]["data"]["content"][0]["data"]["text"]
     )
     assert "Title: Fix webhook" in forward_message[0]["data"]["content"][0]["data"]["text"]
     assert "Labels: bug" in forward_message[0]["data"]["content"][0]["data"]["text"]
@@ -288,6 +289,28 @@ async def test_issues_summary_failure_skips_forward_and_logs_error():
 
     error.assert_called_once()
     assert "发送 Gitea webhook 通知失败" in error.call_args.args[0]
+    async_service.send_group_forward_msg.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_issue_closed_sends_single_line_without_forward():
+    """
+    Issue 关闭只发一行执行者通知，不再转发 issue 全文与正文。
+    """
+    payload = issues_payload()
+    payload["action"] = "closed"
+    payload["sender"] = user_payload("bob")
+    event = GiteaIssuesEvent.model_validate(payload)
+
+    with patch("src.Api.api.asyncGroupService", new=AsyncMock()) as async_service:
+        await WebhookHandler(123, GITEA_API_URL, GITEA_API_TOKEN).resolve(
+            event, "issues", EVENT_CONFIG["issues"]
+        )
+
+    async_service.send_group_msg.assert_awaited_once_with(
+        group_id=123,
+        message="[高程答疑平台] Issue #1 closed by bob",
+    )
     async_service.send_group_forward_msg.assert_not_called()
 
 
@@ -424,10 +447,7 @@ async def test_issue_comment_first_message_is_slim_summary_and_forward_keeps_con
     async_service.send_group_forward_msg.assert_awaited_once()
     forward_message = async_service.send_group_forward_msg.await_args.kwargs["forward_message"]
     assert forward_message[0]["data"]["content"][0]["data"]["text"] == (
-        "[Gitea] issue_comment on issue #1 in org/repo\n"
-        "Title: Fix webhook\n"
-        "Author: alice\n"
-        "Labels: bug"
+        "[高程答疑平台] New comment by bob\nTitle: Fix webhook\nAuthor: alice\nLabels: bug"
     )
     # 新评论也在转发节点中，带作者块
     assert forward_message[2]["data"]["name"] == "bob"

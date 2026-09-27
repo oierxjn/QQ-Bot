@@ -23,6 +23,7 @@ from src.gitea.GiteaEventFormatter import (
     _extract_images,
     _issue_author,
     _parse_comment_segments,
+    issue_comment_action_text,
     prepend_author_block,
 )
 from src.gitea.Models import GiteaIssueCommentEvent, GiteaIssuesEvent, GiteaWebhookEvent
@@ -196,15 +197,11 @@ class NotificationService:
         try:
             # 首条消息只报"谁动了评论"+评论链接（edit 事件依赖链接定位具体评论）；
             # 评论正文、图片和 issue 上下文都在随后的合并转发里
-            action_text = {
-                "created": "New comment",
-                "edited": "comment edited",
-                "deleted": "comment deleted",
-            }.get(data.action, data.action)
             await api.asyncGroupService.send_group_msg(
                 group_id=self.response_group,
                 message=(
-                    f"[高程答疑平台] {action_text} by {data.sender.login}\n"
+                    f"[高程答疑平台] {issue_comment_action_text(data.action)}"
+                    f" by {data.sender.login}\n"
                     f"url: {data.comment.html_url}"
                 ),
             )
@@ -236,6 +233,14 @@ class NotificationService:
 
     async def _send_issues_notification(self, data: GiteaIssuesEvent, event_type: str) -> None:
         """发送 Issue 事件通知，并渲染正文中的 Markdown 图片和附件。"""
+        # Issue 关闭只报一行执行者；open 时的通知已带过全文上下文，不再重复转发
+        if data.action == "closed":
+            await api.asyncGroupService.send_group_msg(
+                group_id=self.response_group,
+                message=f"[高程答疑平台] Issue #{data.number} closed by {data.sender.login}",
+            )
+            return
+
         temp_dir = Path(tempfile.mkdtemp(prefix="gitea_img_"))
         try:
             segments = _parse_comment_segments(

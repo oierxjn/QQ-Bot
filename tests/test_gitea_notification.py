@@ -224,7 +224,8 @@ async def test_issues_notification_sends_markdown_images_and_attachments(monkeyp
         async_service.send_group_forward_msg.assert_awaited_once()
         forward_message = async_service.send_group_forward_msg.await_args.kwargs["forward_message"]
         assert forward_message[0]["data"]["content"][0]["data"]["text"] == (
-            "[Gitea] issues #1 opened in org/repo\nTitle: Issue with image\nLabels: bug\nAuthor: alice"
+            "[高程答疑平台] Issue #1 opened by alice\n"
+            "Title: Issue with image\nLabels: bug\nAuthor: alice"
         )
         # 合并转发正文节点带作者块，节点昵称为作者
         assert forward_message[1]["data"]["name"] == "alice"

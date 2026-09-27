@@ -215,6 +215,13 @@ def prepend_author_block(author: str, segments: list[ContentSegment]) -> list[Co
     return [TextSegment(text=author_block(author)), *segments]
 
 
+def issue_comment_action_text(action: str) -> str:
+    """issue_comment 的动作文案：created 显示为 New comment，其余为 "comment <action>"。"""
+    if action == "created":
+        return "New comment"
+    return f"comment {action}"
+
+
 def _label_text(event_or_issue: GiteaIssuesEvent | Issue) -> str:
     """提取 issue 的标签，以逗号分隔；无标签返回 "none"。"""
     issue = event_or_issue.issue if isinstance(event_or_issue, GiteaIssuesEvent) else event_or_issue
@@ -314,9 +321,16 @@ class GiteaEventFormatter:
     def issues_forward_plan(self, event: GiteaIssuesEvent, event_type: str = "") -> ForwardPlan:
         """构建 issues 事件的合并转发计划，保留正文中的图片和附件顺序。"""
         event_name = event_type or "issues"
+        if event.action == "opened":
+            summary = f"[高程答疑平台] Issue #{event.number} opened by {event.sender.login}"
+        else:
+            summary = (
+                f"[Gitea] {event_name} #{event.number} {event.action}"
+                f" in {event.repository.full_name}"
+            )
         header_text = "\n".join(
             [
-                f"[Gitea] {event_name} #{event.number} {event.action} in {event.repository.full_name}",
+                summary,
                 f"Title: {event.issue.title}",
                 f"Labels: {_label_text(event)}",
                 f"Author: {_issue_author(event)}",
@@ -382,12 +396,10 @@ class GiteaEventFormatter:
         self, event: GiteaIssueCommentEvent, comments: list[Comment]
     ) -> ForwardPlan:
         repo_html_url = event.repository.html_url
-        target = "pull request" if event.is_pull else "issue"
 
         header_text = "\n".join(
             [
-                f"[Gitea] issue_comment on {target} #{event.issue.number}"
-                f" in {event.repository.full_name}",
+                f"[高程答疑平台] {issue_comment_action_text(event.action)} by {event.sender.login}",
                 f"Title: {event.issue.title}",
                 f"Author: {_issue_author(event.issue)}",
                 f"Labels: {_label_text(event.issue)}",
