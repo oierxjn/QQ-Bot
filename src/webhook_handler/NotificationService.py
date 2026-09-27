@@ -194,7 +194,8 @@ class NotificationService:
     async def _send_issue_comment_notification(self, data: GiteaIssueCommentEvent) -> None:
         temp_dir = Path(tempfile.mkdtemp(prefix="gitea_img_"))
         try:
-            # 首条消息只报"谁动了评论"一句话；评论正文、图片和 issue 上下文都在随后的合并转发里
+            # 首条消息只报"谁动了评论"+评论链接（edit 事件依赖链接定位具体评论）；
+            # 评论正文、图片和 issue 上下文都在随后的合并转发里
             action_text = {
                 "created": "New comment",
                 "edited": "comment edited",
@@ -202,7 +203,10 @@ class NotificationService:
             }.get(data.action, data.action)
             await api.asyncGroupService.send_group_msg(
                 group_id=self.response_group,
-                message=f"[高程答疑平台] {action_text} by {data.sender.login}",
+                message=(
+                    f"[高程答疑平台] {action_text} by {data.sender.login}\n"
+                    f"url: {data.comment.html_url}"
+                ),
             )
 
             # 拉取历史评论并发送合并转发

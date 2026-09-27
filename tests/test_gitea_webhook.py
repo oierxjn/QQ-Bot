@@ -399,7 +399,7 @@ def test_issue_formatter_keeps_body_and_lists_attachments_separately():
 @pytest.mark.asyncio
 async def test_issue_comment_first_message_is_slim_summary_and_forward_keeps_context():
     """
-    issue_comment 首条消息只报一句话摘要；评论正文与 issue 上下文都放进合并转发。
+    issue_comment 首条消息只报一句话摘要加评论链接；正文与 issue 上下文都放进合并转发。
     """
     payload = issue_comment_payload()
     payload["comment"]["user"] = user_payload("bob")
@@ -416,7 +416,10 @@ async def test_issue_comment_first_message_is_slim_summary_and_forward_keeps_con
 
     async_service.send_group_msg.assert_awaited_once()
     first_message = async_service.send_group_msg.await_args.kwargs["message"]
-    assert first_message == "[高程答疑平台] New comment by bob"
+    assert first_message == (
+        "[高程答疑平台] New comment by bob\n"
+        "url: https://gitea.example.com/org/repo/issues/1#comment-300"
+    )
 
     async_service.send_group_forward_msg.assert_awaited_once()
     forward_message = async_service.send_group_forward_msg.await_args.kwargs["forward_message"]
@@ -450,4 +453,7 @@ async def test_issue_comment_edited_first_message_names_the_actor():
 
     async_service.send_group_msg.assert_awaited_once()
     first_message = async_service.send_group_msg.await_args.kwargs["message"]
-    assert first_message == "[高程答疑平台] comment edited by bob"
+    assert first_message == (
+        "[高程答疑平台] comment edited by bob\n"
+        "url: https://gitea.example.com/org/repo/issues/1#comment-300"
+    )
