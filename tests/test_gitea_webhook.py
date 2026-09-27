@@ -217,8 +217,8 @@ async def test_send_plain_text_failure_logs_error():
 
 
 @pytest.mark.asyncio
-async def test_issues_event_sends_mixed_message_and_three_node_forward_message():
-    """issues 事件应发送含正文的混合消息，以及图片/附件可用的三节点合并转发。"""
+async def test_issues_event_sends_slim_notice_and_three_node_forward_message():
+    """issues 事件首条只发摘要加链接，正文与上下文放进三节点合并转发。"""
     payload = issues_payload()
     payload["issue"]["body"] = "long body\n" + ("x" * 600)
     payload["issue"]["assets"] = []
@@ -234,13 +234,12 @@ async def test_issues_event_sends_mixed_message_and_three_node_forward_message()
     assert plain_message == [
         {
             "type": "text",
-            "data": {"text": "[Gitea] issues #1 opened in org/repo\nFix webhook\n"},
-        },
-        {"type": "text", "data": {"text": "alice\n-----\n"}},
-        {"type": "text", "data": {"text": "long body\n" + ("x" * 600) + "\n\n"}},
-        {
-            "type": "text",
-            "data": {"text": "\nurl: https://gitea.example.com/org/repo/issues/1"},
+            "data": {
+                "text": (
+                    "[高程答疑平台] Issue #1 opened by alice\n"
+                    "url: https://gitea.example.com/org/repo/issues/1"
+                )
+            },
         },
     ]
 
@@ -268,6 +267,45 @@ async def test_issues_event_sends_mixed_message_and_three_node_forward_message()
         "url: https://gitea.example.com/org/repo/issues/1"
         == forward_message[2]["data"]["content"][0]["data"]["text"]
     )
+
+
+@pytest.mark.asyncio
+async def test_issue_edited_sends_slim_notice_and_forward():
+    """issues 的 edited 事件与 create 同构：单行摘要加链接，转发承载新正文。"""
+    payload = issues_payload()
+    payload["action"] = "edited"
+    payload["sender"] = user_payload("bob")
+    payload["issue"]["body"] = "edited body"
+    payload["issue"]["assets"] = []
+    event = GiteaIssuesEvent.model_validate(payload)
+
+    with patch("src.Api.api.asyncGroupService", new=AsyncMock()) as async_service:
+        await WebhookHandler(123, GITEA_API_URL, GITEA_API_TOKEN).resolve(
+            event, "issues", EVENT_CONFIG["issues"]
+        )
+
+    async_service.send_group_msg.assert_awaited_once()
+    plain_message = async_service.send_group_msg.await_args.kwargs["message"]
+    assert plain_message == [
+        {
+            "type": "text",
+            "data": {
+                "text": (
+                    "[高程答疑平台] Issue #1 edited by bob\n"
+                    "url: https://gitea.example.com/org/repo/issues/1"
+                )
+            },
+        },
+    ]
+
+    async_service.send_group_forward_msg.assert_awaited_once()
+    forward_message = async_service.send_group_forward_msg.await_args.kwargs["forward_message"]
+    assert forward_message[0]["data"]["content"][0]["data"]["text"].startswith(
+        "[高程答疑平台] Issue #1 edited by bob\n"
+    )
+    # 转发正文节点展示编辑后的内容，作者块仍是 issue 作者
+    assert forward_message[1]["data"]["name"] == "alice"
+    assert forward_message[1]["data"]["content"][1]["data"]["text"] == "edited body\n\n"
 
 
 @pytest.mark.asyncio

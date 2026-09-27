@@ -182,7 +182,7 @@ def _issues_event_with_inline_image():
 
 @pytest.mark.asyncio
 async def test_issues_notification_sends_markdown_images_and_attachments(monkeypatch):
-    """issues 事件应与 issue_comment 一样将正文 Markdown 图片下载后混合发送。"""
+    """issues 事件首条只发摘要加链接；正文 Markdown 图片下载后进合并转发。"""
     service = NotificationService(123, "https://gitea.example.com", "token")
     event = _issues_event_with_inline_image()
     downloaded_images: list[ImageSegment] = []
@@ -194,32 +194,26 @@ async def test_issues_notification_sends_markdown_images_and_attachments(monkeyp
     monkeypatch.setattr(service, "_download_images", fake_download)
 
     with patch("src.Api.api.asyncGroupService", new=AsyncMock()) as async_service:
-        await service._send_issues_notification(event, "issues")
+        await service._send_issues_notification(event)
 
         assert downloaded_images == [
             ImageSegment(url="https://gitea.example.com/attachments/inline.png", alt="screen")
         ]
 
+        # 首条消息只报一行摘要加链接；正文、图片和附件都由合并转发承载
         async_service.send_group_msg.assert_awaited_once()
         plain_message = async_service.send_group_msg.await_args.kwargs["message"]
-        assert plain_message[0] == {
-            "type": "text",
-            "data": {
-                "text": "[Gitea] issues #1 opened in org/repo\nIssue with image\n",
-            },
-        }
-        # 正文内容前插入作者块：首行作者名、第二行按显示宽度画分隔线
-        assert plain_message[1] == {"type": "text", "data": {"text": "alice\n-----\n"}}
-        assert plain_message[2:5] == [
-            {"type": "text", "data": {"text": "before "}},
-            {"type": "image", "data": {"file": "file://C:/tmp/inline.png"}},
-            {"type": "text", "data": {"text": " after\n\n"}},
+        assert plain_message == [
+            {
+                "type": "text",
+                "data": {
+                    "text": (
+                        "[高程答疑平台] Issue #1 opened by alice\n"
+                        "url: https://gitea.example.com/org/repo/issues/1"
+                    )
+                },
+            }
         ]
-        assert "report.txt" in plain_message[5]["data"]["text"]
-        assert plain_message[6] == {
-            "type": "text",
-            "data": {"text": "\nurl: https://gitea.example.com/org/repo/issues/1"},
-        }
 
         async_service.send_group_forward_msg.assert_awaited_once()
         forward_message = async_service.send_group_forward_msg.await_args.kwargs["forward_message"]
@@ -229,8 +223,15 @@ async def test_issues_notification_sends_markdown_images_and_attachments(monkeyp
         )
         # 合并转发正文节点带作者块，节点昵称为作者
         assert forward_message[1]["data"]["name"] == "alice"
-        assert forward_message[1]["data"]["content"][0] == plain_message[1]
-        assert forward_message[1]["data"]["content"][1:4] == plain_message[2:5]
+        assert forward_message[1]["data"]["content"][0] == {
+            "type": "text",
+            "data": {"text": "alice\n-----\n"},
+        }
+        assert forward_message[1]["data"]["content"][1:4] == [
+            {"type": "text", "data": {"text": "before "}},
+            {"type": "image", "data": {"file": "file://C:/tmp/inline.png"}},
+            {"type": "text", "data": {"text": " after\n\n"}},
+        ]
         assert "report.txt" in forward_message[1]["data"]["content"][4]["data"]["text"]
 
 

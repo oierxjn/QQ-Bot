@@ -21,10 +21,9 @@ from src.gitea.GiteaEventFormatter import (
     ImageSegment,
     TextSegment,
     _extract_images,
-    _issue_author,
     _parse_comment_segments,
     issue_comment_action_text,
-    prepend_author_block,
+    issues_notice_text,
 )
 from src.gitea.Models import GiteaIssueCommentEvent, GiteaIssuesEvent, GiteaWebhookEvent
 from src.Models import StuId
@@ -79,7 +78,7 @@ class NotificationService:
                 if isinstance(data, GiteaIssueCommentEvent):
                     await self._send_issue_comment_notification(data)
                 elif isinstance(data, GiteaIssuesEvent):
-                    await self._send_issues_notification(data, event_type)
+                    await self._send_issues_notification(data)
                 else:
                     raise TypeError(f"forward=True 不支持 {type(data).__name__} 类型")
             else:
@@ -231,13 +230,13 @@ class NotificationService:
             # 确保临时目录被清理，防止磁盘泄漏
             shutil.rmtree(temp_dir, ignore_errors=True)
 
-    async def _send_issues_notification(self, data: GiteaIssuesEvent, event_type: str) -> None:
-        """发送 Issue 事件通知，并渲染正文中的 Markdown 图片和附件。"""
+    async def _send_issues_notification(self, data: GiteaIssuesEvent) -> None:
+        """发送 Issue 事件通知：首条只报"谁动了 Issue"+链接，正文由合并转发承载。"""
         # Issue 关闭只报一行执行者；open 时的通知已带过全文上下文，不再重复转发
         if data.action == "closed":
             await api.asyncGroupService.send_group_msg(
                 group_id=self.response_group,
-                message=f"[高程答疑平台] Issue #{data.number} closed by {data.sender.login}",
+                message=issues_notice_text(data),
             )
             return
 
@@ -255,30 +254,15 @@ class NotificationService:
             message: list[dict] = [
                 {
                     "type": "text",
-                    "data": {
-                        "text": (
-                            f"{self.formatter.issues_summary(data, event_type)}\n"
-                            f"{data.issue.title}\n"
-                        )
-                    },
+                    "data": {"text": (f"{issues_notice_text(data)}\nurl: {data.issue.html_url}")},
                 }
             ]
-            message.extend(
-                self._node_segments(
-                    ContentNode(
-                        sender_name="",
-                        segments=prepend_author_block(_issue_author(data), segments),
-                    ),
-                    path_map,
-                )
-            )
-            message.append({"type": "text", "data": {"text": f"\nurl: {data.issue.html_url}"}})
             await api.asyncGroupService.send_group_msg(
                 group_id=self.response_group,
                 message=message,
             )
 
-            plan = self.formatter.issues_forward_plan(data, event_type)
+            plan = self.formatter.issues_forward_plan(data)
             forward: Forward = self._build_forward_from_plan(plan, path_map)
             await api.asyncGroupService.send_group_forward_msg(
                 group_id=self.response_group,
