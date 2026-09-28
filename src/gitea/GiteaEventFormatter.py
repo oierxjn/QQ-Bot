@@ -231,8 +231,10 @@ def _display_name(user: User) -> str:
 
 def issue_comment_notice_text(event: GiteaIssueCommentEvent) -> str:
     """issue_comment 事件的通知摘要行（首条消息与合并转发头共用），不含链接。"""
+    target = "pull request" if event.is_pull else "issue"
     return (
-        f"[高程答疑平台] {issue_comment_action_text(event.action)} by {_display_name(event.sender)}"
+        f"[高程答疑平台] {issue_comment_action_text(event.action)}"
+        f" on {target} #{event.issue.number} by {_display_name(event.sender)}"
     )
 
 
