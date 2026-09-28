@@ -238,9 +238,26 @@ def issue_comment_notice_text(event: GiteaIssueCommentEvent) -> str:
     )
 
 
+def issues_action_text(event: GiteaIssuesEvent) -> str:
+    """issues 事件的动作文案：标题编辑（changes.title 存在）与正文编辑区分开。"""
+    if event.action == "edited" and event.changes is not None and event.changes.title is not None:
+        return "title edited"
+    return event.action
+
+
 def issues_notice_text(event: GiteaIssuesEvent) -> str:
     """issues 事件的通知摘要行（首条消息与合并转发头共用），不含链接。"""
-    return f"[高程答疑平台] Issue #{event.number} {event.action} by {_display_name(event.sender)}"
+    return f"[高程答疑平台] Issue #{event.number} {issues_action_text(event)} by {_display_name(event.sender)}"
+
+
+def _issue_title_line(event: GiteaIssuesEvent) -> str:
+    """转发头的标题行；标题编辑事件追加旧标题，正文编辑不加注。"""
+    line = f"Title: {event.issue.title}"
+    if event.action == "edited" and event.changes is not None:
+        old_title = event.changes.title.from_ if event.changes.title is not None else None
+        if old_title:
+            line += f"（原：{old_title}）"
+    return line
 
 
 def _label_text(event_or_issue: GiteaIssuesEvent | Issue) -> str:
@@ -344,7 +361,7 @@ class GiteaEventFormatter:
         header_text = "\n".join(
             [
                 issues_notice_text(event),
-                f"Title: {event.issue.title}",
+                _issue_title_line(event),
                 f"Labels: {_label_text(event)}",
                 f"Author: {_issue_author(event)}",
             ]

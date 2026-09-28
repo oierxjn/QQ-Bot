@@ -278,7 +278,6 @@ async def test_issue_edited_sends_slim_notice_and_forward():
     payload["issue"]["body"] = "edited body"
     payload["issue"]["assets"] = []
     event = GiteaIssuesEvent.model_validate(payload)
-
     with patch("src.Api.api.asyncGroupService", new=AsyncMock()) as async_service:
         await WebhookHandler(123, GITEA_API_URL, GITEA_API_TOKEN).resolve(
             event, "issues", EVENT_CONFIG["issues"]
@@ -306,6 +305,74 @@ async def test_issue_edited_sends_slim_notice_and_forward():
     # 转发正文节点展示编辑后的内容，作者块仍是 issue 作者
     assert forward_message[1]["data"]["name"] == "alice"
     assert forward_message[1]["data"]["content"][1]["data"]["text"] == "edited body\n\n"
+
+
+@pytest.mark.asyncio
+async def test_issue_title_edited_distinguishes_copy_and_shows_old_title():
+    """
+    标题编辑：摘要行区分文案为 title edited，转发头 Title 行附带旧标题。
+    """
+    payload = issues_payload()
+    payload["action"] = "edited"
+    payload["sender"] = user_payload("bob")
+    payload["issue"]["body"] = "body"
+    payload["issue"]["assets"] = []
+    payload["issue"]["title"] = "New title"
+    payload["changes"] = {"title": {"from": "Old title"}}
+    event = GiteaIssuesEvent.model_validate(payload)
+
+    with patch("src.Api.api.asyncGroupService", new=AsyncMock()) as async_service:
+        await WebhookHandler(123, GITEA_API_URL, GITEA_API_TOKEN).resolve(
+            event, "issues", EVENT_CONFIG["issues"]
+        )
+
+    async_service.send_group_msg.assert_awaited_once()
+    plain_message = async_service.send_group_msg.await_args.kwargs["message"]
+    assert plain_message == [
+        {
+            "type": "text",
+            "data": {
+                "text": (
+                    "[高程答疑平台] Issue #1 title edited by bob\n"
+                    "url: https://gitea.example.com/org/repo/issues/1"
+                )
+            },
+        },
+    ]
+
+    async_service.send_group_forward_msg.assert_awaited_once()
+    forward_message = async_service.send_group_forward_msg.await_args.kwargs["forward_message"]
+    header = forward_message[0]["data"]["content"][0]["data"]["text"]
+    assert header.startswith("[高程答疑平台] Issue #1 title edited by bob\n")
+    assert "Title: New title（原：Old title）" in header
+
+
+@pytest.mark.asyncio
+async def test_issue_body_edited_keeps_plain_edited_copy():
+    """
+    正文编辑：changes 只有 body 时摘要行保持 edited，转发头 Title 行不加旧值。
+    """
+    payload = issues_payload()
+    payload["action"] = "edited"
+    payload["sender"] = user_payload("bob")
+    payload["issue"]["body"] = "new body"
+    payload["issue"]["assets"] = []
+    payload["changes"] = {"body": {"from": "old body"}}
+    event = GiteaIssuesEvent.model_validate(payload)
+
+    with patch("src.Api.api.asyncGroupService", new=AsyncMock()) as async_service:
+        await WebhookHandler(123, GITEA_API_URL, GITEA_API_TOKEN).resolve(
+            event, "issues", EVENT_CONFIG["issues"]
+        )
+
+    async_service.send_group_msg.assert_awaited_once()
+    plain_message = async_service.send_group_msg.await_args.kwargs["message"]
+    assert "[高程答疑平台] Issue #1 edited by bob" in plain_message[0]["data"]["text"]
+
+    async_service.send_group_forward_msg.assert_awaited_once()
+    forward_message = async_service.send_group_forward_msg.await_args.kwargs["forward_message"]
+    header = forward_message[0]["data"]["content"][0]["data"]["text"]
+    assert "Title: Fix webhook（原：" not in header
 
 
 @pytest.mark.asyncio
