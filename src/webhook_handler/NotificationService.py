@@ -294,10 +294,12 @@ class NotificationService:
         if action_text is None:
             return
         commenter = data.comment.original_author or data.comment.user.login
+        # 动作执行者（sender）与评论归属者本人都不提醒：自己（或自己的评论）的变动不私聊
+        actor_login = data.sender.login
         targets: list[str] = []
         for user in (data.issue.user, *data.issue.assignees):
             login = user.login
-            if not login or login == commenter or login in self.dm_notify_exclude:
+            if not login or login in (actor_login, commenter) or login in self.dm_notify_exclude:
                 continue
             if login not in targets:
                 targets.append(login)

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.gitea.Models import GiteaIssueCommentEvent
+from src.gitea.Models import GiteaIssueCommentEvent, User
 from src.webhook_handler.EventConfig import EVENT_CONFIG
 from src.webhook_handler.NotificationService import NotificationService
 
@@ -167,6 +167,20 @@ async def test_dm_commenter_and_excluded_never_dmed(service):
         await service._send_comment_dm_notifications(event)
 
     private.send_private_msg.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_dm_actor_in_targets_not_dmed(service):
+    """编辑者本人（如兼被指派人）不收自己操作的通知，其余目标照常。"""
+    patch_lookup(service, {"2553759": "9000001", "2553762": "9000003"})
+    event = comment_event(action="edited", assignees=["2553762"])
+    event.sender = User.model_validate(user_payload("2553762"))
+
+    with patch("src.Api.api.asyncPrivateService", new=AsyncMock()) as private:
+        await service._send_comment_dm_notifications(event)
+
+    private.send_private_msg.assert_awaited_once()
+    assert private.send_private_msg.await_args.args[0] == 9000001
 
 
 @pytest.mark.asyncio
