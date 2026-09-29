@@ -20,6 +20,7 @@ from src.gitea.GiteaEventFormatter import (
     GiteaEventFormatter,
     ImageSegment,
     TextSegment,
+    _display_name,
     _extract_images,
     _parse_comment_segments,
     issue_comment_notice_text,
@@ -83,7 +84,7 @@ class NotificationService:
                     raise TypeError(f"forward=True 不支持 {type(data).__name__} 类型")
             else:
                 await self._send_plain_text(data, event_type)
-            # 评论私聊提醒独立于群通知模式，仅对 issue_comment 的新评论触发
+            # 评论私聊提醒独立于群通知模式，仅对 issue_comment 的新评论/编辑触发
             if self.dm_notify and isinstance(data, GiteaIssueCommentEvent):
                 await self._send_comment_dm_notifications(data)
         except Exception as e:
@@ -279,13 +280,18 @@ class NotificationService:
         )
 
     async def _send_comment_dm_notifications(self, data: GiteaIssueCommentEvent) -> None:
-        """issue 新评论的临时会话提醒：私聊 issue 作者与被指派人。
+        """issue 评论变动的临时会话提醒（新评论/编辑）：私聊 issue 作者与被指派人。
 
         Gitea 用户名即学号，经 stu_qq_id_map 换算 QQ 号后以 dm_notify_source_group
         为临时会话来源群发送；评论者本人不发；assistant_list 助教名单与
-        dm_notify_exclude 名单不发；失败无条件记 warning 日志。
+        dm_notify_exclude 名单不发；消息只报动作与链接，不转发评论内容；
+        失败无条件记 warning 日志。
         """
-        if data.action != "created":
+        action_text = {
+            "created": "发表了新评论",
+            "edited": "编辑了一条评论",
+        }.get(data.action)
+        if action_text is None:
             return
         commenter = data.comment.original_author or data.comment.user.login
         targets: list[str] = []
@@ -298,7 +304,11 @@ class NotificationService:
         if not targets:
             return
         Log.debug(f"issue #{data.issue.number} 私聊通知目标：{'、'.join(targets)}", self.debug)
-        dm_text = f"高程答疑平台在你的 Issue 下有新评论：\n{data.comment.html_url}"
+        dm_text = (
+            f"高程答疑平台：{_display_name(data.sender)}"
+            f"在你的 Issue #{data.issue.number} 下{action_text}：\n"
+            f"{data.comment.html_url}"
+        )
 
         failed: list[str] = []
         for login in targets:

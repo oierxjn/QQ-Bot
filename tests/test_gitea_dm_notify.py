@@ -151,7 +151,7 @@ async def test_dm_sent_to_author_and_assignee(service):
     for call in private.send_private_msg.await_args_list:
         assert call.kwargs["group_id"] == 123
         assert call.args[1] == (
-            "高程答疑平台在你的 Issue 下有新评论：\n"
+            "高程答疑平台：2553761在你的 Issue #1 下发表了新评论：\n"
             "https://gitea.example.com/org/repo/issues/1#comment-300"
         )
     group.send_group_msg.assert_not_awaited()
@@ -190,9 +190,27 @@ async def test_dm_failure_only_logged_as_warning(service, caplog):
 
 
 @pytest.mark.asyncio
-async def test_dm_skipped_for_non_created_action(service):
+async def test_dm_edited_action_has_by_line(service):
+    """编辑评论同样私聊，文案区分动作并带执行者展示名。"""
     patch_lookup(service, {"2553759": "9000001"})
     event = comment_event(action="edited")
+    event.sender.full_name = "张三"
+
+    with patch("src.Api.api.asyncPrivateService", new=AsyncMock()) as private:
+        await service._send_comment_dm_notifications(event)
+
+    private.send_private_msg.assert_awaited_once()
+    assert private.send_private_msg.await_args.args[1] == (
+        "高程答疑平台：张三在你的 Issue #1 下编辑了一条评论：\n"
+        "https://gitea.example.com/org/repo/issues/1#comment-300"
+    )
+
+
+@pytest.mark.asyncio
+async def test_dm_skipped_for_deleted_action(service):
+    """删除评论不私聊。"""
+    patch_lookup(service, {"2553759": "9000001"})
+    event = comment_event(action="deleted")
 
     with patch("src.Api.api.asyncPrivateService", new=AsyncMock()) as private:
         await service._send_comment_dm_notifications(event)
