@@ -1,0 +1,14 @@
+FROM docker:28-cli AS docker_cli
+FROM python:3.13-slim-trixie
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+COPY --from=docker_cli /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=docker_cli /usr/local/libexec/docker/cli-plugins/docker-compose /usr/local/libexec/docker/cli-plugins/docker-compose
+
+WORKDIR /app/panel
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy PATH="/app/panel/.venv/bin:$PATH"
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+COPY web/deployment ./web/deployment
+
+CMD ["python", "-m", "web.deployment"]
