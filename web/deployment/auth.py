@@ -20,6 +20,10 @@ def create_credentials(password):
     }
 
 
+def generate_password():
+    return secrets.token_urlsafe(18)
+
+
 class Authentication:
     def __init__(self, credentials):
         self.credentials = credentials

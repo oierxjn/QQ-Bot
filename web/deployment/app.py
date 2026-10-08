@@ -147,6 +147,8 @@ def create_app(document: ComposeDocument | None, runner, credentials, *, configs
             raise ValueError("源码模式需要配置目录")
         configs = ConfigStore(document.root, document.state)
     operation_lock = tasks.lock if tasks else asyncio.Lock()
+    state = document.state if document is not None else configs.state
+    initial_password = state / "initial-password"
 
     @asynccontextmanager
     async def lifespan(app):
@@ -229,6 +231,7 @@ def create_app(document: ComposeDocument | None, runner, credentials, *, configs
     async def login(body: Login):
         async with login_lock:
             token, session = await asyncio.to_thread(authentication.login, body.password)
+        initial_password.unlink(missing_ok=True)
         response = JSONResponse({"csrf": session["csrf"]})
         response.set_cookie(
             "panel_session", token, httponly=True, samesite="strict", max_age=8 * 3600, path="/"

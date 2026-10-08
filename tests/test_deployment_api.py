@@ -68,6 +68,16 @@ def test_authentication_and_csrf_required(panel):
     assert runner.calls == []
 
 
+def test_initial_password_file_removed_on_successful_login(panel):
+    client, document, runner = panel
+    initial = document.state / "initial-password"
+    initial.write_text("stale\n", encoding="utf-8")
+    assert client.post("/api/login", json={"password": "wrong"}).status_code == 401
+    assert initial.exists()
+    assert client.post("/api/login", json={"password": "test-password"}).status_code == 200
+    assert not initial.exists()
+
+
 def test_validation_failure_does_not_write_file(panel):
     client, document, runner = panel
     runner.failure = True

@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from types import SimpleNamespace
 
@@ -6,8 +7,9 @@ import pytest
 
 from tests.test_deployment_config import SOURCE
 from web.deployment import default_source_root
+from web.deployment.auth import Authentication
 from web.deployment.config import DeploymentError
-from web.deployment.setup import discover_project, initialize, main
+from web.deployment.setup import discover_project, initialize, initialize_source, main
 from web.deployment.toml_config import CONFIG_NAMES
 
 
@@ -76,11 +78,36 @@ def test_source_main_defaults_to_package_root(tmp_path, monkeypatch):
         (configs / f"{name}.template").write_text("", encoding="utf-8")
     monkeypatch.setattr(sys, "argv", ["setup", "--mode", "source"])
     monkeypatch.setattr("web.deployment.setup.default_source_root", lambda: tmp_path)
-    monkeypatch.setattr("web.deployment.setup.getpass.getpass", lambda prompt="": "a" * 16)
     main()
     settings = json.loads(
         (tmp_path / ".webcontroller" / "settings.json").read_text(encoding="utf-8")
     )
     assert settings == {"root": str(tmp_path.resolve()), "mode": "source"}
-    credentials = (tmp_path / ".webcontroller" / "credentials.json").read_text(encoding="utf-8")
-    assert "a" * 16 not in credentials
+    initial = tmp_path / ".webcontroller" / "initial-password"
+    assert len(initial.read_text(encoding="utf-8").strip()) >= 12
+
+
+def test_initial_password_file_lifecycle(tmp_path):
+    configs = tmp_path / "configs"
+    configs.mkdir()
+    for name in CONFIG_NAMES:
+        (configs / f"{name}.template").write_text("", encoding="utf-8")
+    initialize_source(tmp_path)
+    initial = tmp_path / ".webcontroller" / "initial-password"
+    password = initial.read_text(encoding="utf-8").strip()
+    assert len(password) >= 12
+    if os.name != "nt":
+        assert initial.stat().st_mode & 0o777 == 0o600
+    credentials = json.loads(
+        (tmp_path / ".webcontroller" / "credentials.json").read_text(encoding="utf-8")
+    )
+    Authentication(credentials).login(password)
+    initialize_source(tmp_path)
+    assert initial.read_text(encoding="utf-8") == password + "\n"
+
+
+def test_compose_init_generates_initial_password(tmp_path):
+    (tmp_path / "compose.yaml").write_text(SOURCE, encoding="utf-8")
+    initialize(tmp_path, "generated-project")
+    initial = tmp_path / ".webcontroller" / "initial-password"
+    assert len(initial.read_text(encoding="utf-8").strip()) >= 12

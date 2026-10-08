@@ -12,7 +12,7 @@ uv run -m web.deployment.setup --mode source
 uv run -m web.deployment --mode source
 ```
 
-初始化交互设置管理员密码，从 `configs/*.toml.template` 补齐五类缺失配置，不覆盖已有文件；重复执行保留密码。设置与密码哈希存放于 `.webcontroller/`，不写入 `.env`。源码与 Compose 模式不能混用同一个已初始化的状态目录。
+初始化自动生成随机管理员密码，写入 `.webcontroller/initial-password`（仅当前用户可读），终端只提示文件路径，不显示密码内容；首次成功登录后面板自动删除该文件，请尽快用 `--reset-password` 设置自己的密码。初始化从 `configs/*.toml.template` 补齐五类缺失配置，不覆盖已有文件；重复执行保留密码。设置与密码哈希存放于 `.webcontroller/`，不写入 `.env`。源码与 Compose 模式不能混用同一个已初始化的状态目录。
 
 默认监听 `127.0.0.1:7001`，可使用 `--port 7002` 指定其他端口。远程访问使用下文的 SSH 转发。旧 Bot 配置中的 `web_controller_address` 不控制独立面板，仍保留以兼容 Bot 配置加载。
 
@@ -60,7 +60,7 @@ Bot 基础配置提供表单，密码和令牌默认遮蔽；插件提供全局�
 
 支持 Linux Docker Engine 和 WSL 内的 Linux Docker Engine。宿主机需要 Docker 与 Compose 插件，不需要 Python/uv。
 
-执行发布包中的 `bash scripts/docker_compose_init.sh`，完成原有 QQ/LLBot/数据库配置初始化后，脚本自动初始化面板。面板密码至少 12 字符，与 LLBot WebUI 密码独立。
+执行发布包中的 `bash scripts/docker_compose_init.sh`，完成原有 QQ/LLBot/数据库配置初始化后，脚本自动初始化面板。初始面板密码自动生成，存于 `.webcontroller/initial-password`，首次成功登录后自动删除；与 LLBot WebUI 密码独立。
 
 ```bash
 docker compose up -d webcontroller

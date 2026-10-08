@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 
 from . import default_source_root
-from .auth import create_credentials
+from .auth import create_credentials, generate_password
 from .config import ComposeDocument, DeploymentError, atomic_write, plain
 from .toml_config import CONFIG_NAMES, ConfigStore
 
@@ -33,9 +33,8 @@ def initialize_source(root: Path, password=None):
     credentials = state / "credentials.json"
     if not credentials.exists():
         if password is None:
-            password = getpass.getpass("设置面板管理员密码（至少 12 字符）: ")
-            if password != getpass.getpass("再次输入密码: "):
-                raise DeploymentError("两次密码不一致")
+            password = generate_password()
+            atomic_write(state / "initial-password", password + "\n")
         atomic_write(credentials, json.dumps(create_credentials(password)))
     for path, source in missing:
         atomic_write(path, source)
@@ -104,9 +103,8 @@ def initialize(root: Path, project: str, password=None):
     credentials = state / "credentials.json"
     if not credentials.exists():
         if password is None:
-            password = getpass.getpass("设置面板管理员密码（至少 12 字符）: ")
-            if password != getpass.getpass("再次输入密码: "):
-                raise DeploymentError("两次密码不一致")
+            password = generate_password()
+            atomic_write(state / "initial-password", password + "\n")
         atomic_write(credentials, json.dumps(create_credentials(password)))
     atomic_write(settings_path, json.dumps(settings))
     env_path = root / ".env"
@@ -134,6 +132,13 @@ def initialize(root: Path, project: str, password=None):
     return document
 
 
+def print_initial_password(root: Path):
+    initial = root / ".webcontroller" / "initial-password"
+    if initial.exists():
+        print(f"初始管理员密码已生成：{initial}")
+        print("首次成功登录后面板会删除该文件；请尽快用 setup --reset-password 修改密码。")
+
+
 def main():
     parser = argparse.ArgumentParser(description="初始化独立部署面板")
     parser.add_argument("--root", type=Path)
@@ -159,8 +164,10 @@ def main():
             atomic_write(
                 root / ".webcontroller/credentials.json", json.dumps(create_credentials(password))
             )
+            (root / ".webcontroller/initial-password").unlink(missing_ok=True)
         initialize_source(root)
         print("源码面板初始化完成，执行 uv run -m web.deployment --mode source")
+        print_initial_password(root)
         return
     project = discover_project(root, args.project_name)
     # Explicit host-side maintenance commands; never exposed through the web API.
@@ -176,6 +183,7 @@ def main():
         if password != getpass.getpass("再次输入密码: "):
             raise DeploymentError("两次密码不一致")
         atomic_write(state / "credentials.json", json.dumps(create_credentials(password)))
+        (state / "initial-password").unlink(missing_ok=True)
     if args.accept_panel_upgrade:
         protected = ComposeDocument.protection(
             ComposeDocument.decode((root / "compose.yaml").read_text(encoding="utf-8"))
@@ -184,6 +192,7 @@ def main():
     initialize(root, project)
     print(f"面板初始化完成，Compose 项目：{project}")
     print("执行 docker compose up -d webcontroller 后访问 http://127.0.0.1:7001")
+    print_initial_password(root)
 
 
 if __name__ == "__main__":
