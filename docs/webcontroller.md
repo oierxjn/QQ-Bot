@@ -14,7 +14,7 @@ uv run -m web.deployment --mode source
 
 初始化自动生成随机管理员密码，写入 `.webcontroller/initial-password`（仅当前用户可读），终端只提示文件路径，不显示密码内容；首次成功登录后面板自动删除该文件，请尽快用 `--reset-password` 设置自己的密码。初始化从 `configs/*.toml.template` 补齐五类缺失配置，不覆盖已有文件；重复执行保留密码。设置与密码哈希存放于 `.webcontroller/`，不写入 `.env`。源码与 Compose 模式不能混用同一个已初始化的状态目录。
 
-默认监听 `127.0.0.1:7001`，可使用 `--port 7002` 指定其他端口。远程访问使用下文的 SSH 转发。旧 Bot 配置中的 `web_controller_address` 不控制独立面板，仍保留以兼容 Bot 配置加载。
+默认监听 `127.0.0.1:7001`，可使用 `--port 7002` 指定其他端口。可用 `--bg` 以后台进程运行（`--mode source --bg`），PID 与日志分别记录在 `.webcontroller/panel.pid`、`panel.log`，用 `--mode source --stop` 停止；长期运行仍建议使用下文的 systemd 服务。远程访问使用下文的 SSH 转发。旧 Bot 配置中的 `web_controller_address` 不控制独立面板，仍保留以兼容 Bot 配置加载。
 
 面板与 `uv run main.py` 分开运行。面板不会启动、停止或自动重启 Bot，也不执行数据库初始化。忘记密码时执行：
 
@@ -42,7 +42,7 @@ UMask=0077
 WantedBy=multi-user.target
 ```
 
-将服务保存为 `/etc/systemd/system/theresa-webcontroller.service` 后，由管理员执行 `sudo systemctl daemon-reload` 和 `sudo systemctl enable --now theresa-webcontroller`。Windows 可在独立终端运行；本版不自动安装后台服务。
+将服务保存为 `/etc/systemd/system/theresa-webcontroller.service` 后，由管理员执行 `sudo systemctl daemon-reload` 和 `sudo systemctl enable --now theresa-webcontroller`。Windows 可在独立终端运行或使用 `--bg`；本版不自动安装系统服务。
 
 ## Bot TOML 配置管理（两种部署共用）
 

@@ -121,6 +121,58 @@ def test_source_cli_serves_without_compose(source_root):
         process.wait(timeout=10)
 
 
+def test_source_cli_background_start_and_stop(source_root):
+    import socket
+    import time
+
+    import httpx
+
+    from web.deployment.__main__ import start_background, stop_background
+
+    initialize_source(source_root, "test-password")
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        port = listener.getsockname()[1]
+    child = start_background(source_root.resolve(), "source", port)
+    record = source_root / ".webcontroller" / "panel.pid"
+    try:
+        deadline = time.monotonic() + 15
+        with httpx.Client(base_url=f"http://127.0.0.1:{port}", trust_env=False) as client:
+            while True:
+                assert child.poll() is None, "Background panel exited unexpectedly"
+                try:
+                    response = client.get("/")
+                    break
+                except httpx.ConnectError:
+                    assert time.monotonic() < deadline, "Background panel did not start"
+                    time.sleep(0.05)
+        assert response.status_code == 200
+        assert record.read_text(encoding="utf-8").strip() == str(child.pid)
+        stop_background(source_root.resolve())
+        assert child.wait(timeout=10) is not None
+        assert not record.exists()
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait(timeout=10)
+
+
+def test_background_refuses_duplicate_and_cleans_stale(source_root):
+    import os
+
+    from web.deployment.__main__ import process_alive, start_background, stop_background
+
+    initialize_source(source_root, "test-password")
+    record = source_root / ".webcontroller" / "panel.pid"
+    record.write_text(str(os.getpid()) + "\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        start_background(source_root.resolve(), "source", 7001)
+    record.write_text("2000000000\n", encoding="utf-8")
+    stop_background(source_root.resolve())
+    assert not record.exists()
+    assert not process_alive(2000000000)
+
+
 def test_compose_shares_config_and_operation_lock(compose_panel):
     client, document, runner = compose_panel
     headers = login(client)
