@@ -33,3 +33,30 @@ jobs:
 
       - name: Run tests
         run: uv run pytest
+
+  webcontroller-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - name: Install panel test dependencies
+        run: uv sync
+      - name: Build standalone panel image
+        run: docker build -f Dockerfile.webcontroller -t theresa-webcontroller:test .
+      - name: Run isolated Docker acceptance
+        env:
+          RUN_WEB_DOCKER_TESTS: "1"
+          WEB_PANEL_TEST_IMAGE: theresa-webcontroller:test
+        run: uv run pytest tests/test_deployment_docker.py -v
+
+  webcontroller-source:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync
+      - name: Verify source configuration workflows
+        run: uv run pytest tests/test_deployment_toml.py tests/test_deployment_source.py tests/test_deployment_api.py
