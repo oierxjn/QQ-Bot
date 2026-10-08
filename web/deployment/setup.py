@@ -1,14 +1,11 @@
 """Initialize standalone source or Compose panel credentials and deployment identity."""
 
-import argparse
-import getpass
 import json
 import os
 import re
 import subprocess
 from pathlib import Path
 
-from . import default_source_root
 from .auth import create_credentials, generate_password
 from .config import ComposeDocument, DeploymentError, atomic_write, plain
 from .toml_config import CONFIG_NAMES, ConfigStore
@@ -137,63 +134,3 @@ def print_initial_password(root: Path):
     if initial.exists():
         print(f"初始管理员密码已生成：{initial}")
         print("首次成功登录后面板会删除该文件；请尽快用 setup --reset-password 修改密码。")
-
-
-def main():
-    parser = argparse.ArgumentParser(description="初始化独立部署面板")
-    parser.add_argument("--root", type=Path)
-    parser.add_argument("--mode", choices=("source", "compose"), default="compose")
-    parser.add_argument("--project-name")
-    parser.add_argument("--reset-password", action="store_true")
-    parser.add_argument("--accept-panel-upgrade", action="store_true")
-    args = parser.parse_args()
-    default = default_source_root() if args.mode == "source" else Path.cwd()
-    root = (args.root or default).resolve()
-    if args.mode == "source":
-        if args.accept_panel_upgrade or args.project_name:
-            parser.error("源码模式不接受 Compose 维护参数")
-        if args.reset_password:
-            settings = json.loads(
-                (root / ".webcontroller/settings.json").read_text(encoding="utf-8")
-            )
-            if settings != {"root": str(root), "mode": "source"}:
-                raise DeploymentError("部署目录或模式不一致")
-            password = getpass.getpass("新管理员密码（至少 12 字符）: ")
-            if password != getpass.getpass("再次输入密码: "):
-                raise DeploymentError("两次密码不一致")
-            atomic_write(
-                root / ".webcontroller/credentials.json", json.dumps(create_credentials(password))
-            )
-            (root / ".webcontroller/initial-password").unlink(missing_ok=True)
-        initialize_source(root)
-        print("源码面板初始化完成，执行 uv run -m web.deployment --mode source")
-        print_initial_password(root)
-        return
-    project = discover_project(root, args.project_name)
-    # Explicit host-side maintenance commands; never exposed through the web API.
-    state = root / ".webcontroller"
-    settings_path = state / "settings.json"
-    if settings_path.exists() and json.loads(settings_path.read_text(encoding="utf-8")) != {
-        "root": str(root),
-        "project": project,
-    }:
-        raise DeploymentError("已初始化的部署目录或项目名不同，拒绝执行维护操作")
-    if args.reset_password:
-        password = getpass.getpass("新管理员密码（至少 12 字符）: ")
-        if password != getpass.getpass("再次输入密码: "):
-            raise DeploymentError("两次密码不一致")
-        atomic_write(state / "credentials.json", json.dumps(create_credentials(password)))
-        (state / "initial-password").unlink(missing_ok=True)
-    if args.accept_panel_upgrade:
-        protected = ComposeDocument.protection(
-            ComposeDocument.decode((root / "compose.yaml").read_text(encoding="utf-8"))
-        )
-        atomic_write(state / "protected.json", json.dumps(protected, ensure_ascii=False))
-    initialize(root, project)
-    print(f"面板初始化完成，Compose 项目：{project}")
-    print("执行 docker compose up -d webcontroller 后访问 http://127.0.0.1:7001")
-    print_initial_password(root)
-
-
-if __name__ == "__main__":
-    main()

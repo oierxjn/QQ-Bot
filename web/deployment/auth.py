@@ -8,8 +8,6 @@ from .config import DeploymentError
 
 
 def create_credentials(password):
-    if len(password) < 12:
-        raise DeploymentError("管理员密码至少需要 12 个字符")
     salt = secrets.token_hex(16)
     return {
         "salt": salt,

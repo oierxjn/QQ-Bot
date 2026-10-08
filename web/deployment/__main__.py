@@ -1,4 +1,5 @@
 import argparse
+import getpass
 import json
 import os
 import signal
@@ -11,8 +12,10 @@ import uvicorn
 
 from . import default_source_root
 from .app import create_app
-from .config import ComposeDocument
+from .auth import create_credentials
+from .config import ComposeDocument, DeploymentError, atomic_write
 from .runner import ComposeRunner
+from .setup import discover_project, initialize, initialize_source, print_initial_password
 from .toml_config import ConfigStore
 
 
@@ -125,6 +128,65 @@ def stop_background(root):
     print(f"已停止后台面板（PID {pid}）")
 
 
+def prompt_password(text, explicit):
+    if explicit is not None:
+        return explicit
+    password = getpass.getpass(text)
+    if password != getpass.getpass("再次输入密码: "):
+        raise DeploymentError("两次密码不一致")
+    return password
+
+
+def run_setup(root, args, parser):
+    if args.mode == "source":
+        if args.accept_panel_upgrade or args.project_name:
+            parser.error("源码模式不接受 Compose 维护参数")
+        if args.reset_password:
+            settings_path = root / ".webcontroller" / "settings.json"
+            if not settings_path.is_file():
+                raise DeploymentError("面板尚未初始化，请先执行 --init")
+            settings = json.loads(settings_path.read_text(encoding="utf-8"))
+            if settings != {"root": str(root), "mode": "source"}:
+                raise DeploymentError("部署目录或模式不一致")
+            password = prompt_password("新管理员密码: ", args.password)
+            atomic_write(
+                root / ".webcontroller/credentials.json", json.dumps(create_credentials(password))
+            )
+            (root / ".webcontroller/initial-password").unlink(missing_ok=True)
+            print("管理员密码已重置，重启面板后使用新密码登录")
+            return
+        initialize_source(root, args.password)
+        print("源码面板初始化完成，执行 uv run -m web.deployment --mode source")
+        print_initial_password(root)
+        return
+    project = discover_project(root, args.project_name)
+    # Explicit host-side maintenance commands; never exposed through the web API.
+    state = root / ".webcontroller"
+    settings_path = state / "settings.json"
+    if settings_path.exists() and json.loads(settings_path.read_text(encoding="utf-8")) != {
+        "root": str(root),
+        "project": project,
+    }:
+        raise DeploymentError("已初始化的部署目录或项目名不同，拒绝执行维护操作")
+    if args.reset_password:
+        if not settings_path.exists():
+            raise DeploymentError("面板尚未初始化，请先执行 --init")
+        password = prompt_password("新管理员密码: ", args.password)
+        atomic_write(state / "credentials.json", json.dumps(create_credentials(password)))
+        (state / "initial-password").unlink(missing_ok=True)
+        print("管理员密码已重置，重启面板后使用新密码登录")
+        return
+    if args.accept_panel_upgrade:
+        protected = ComposeDocument.protection(
+            ComposeDocument.decode((root / "compose.yaml").read_text(encoding="utf-8"))
+        )
+        atomic_write(state / "protected.json", json.dumps(protected, ensure_ascii=False))
+    initialize(root, project, args.password)
+    print(f"面板初始化完成，Compose 项目：{project}")
+    print("执行 docker compose up -d webcontroller 后访问 http://127.0.0.1:7001")
+    print_initial_password(root)
+
+
 def main():
     parser = argparse.ArgumentParser(description="独立 WebController 配置面板")
     parser.add_argument("--mode", choices=("source", "compose"), default="compose")
@@ -132,7 +194,21 @@ def main():
     parser.add_argument("--port", type=int, default=7001)
     parser.add_argument("--bg", action="store_true", help="以后台进程运行，日志写入状态目录")
     parser.add_argument("--stop", action="store_true", help="停止后台运行的面板")
+    parser.add_argument("--init", action="store_true", help="初始化部署身份与配置后退出")
+    parser.add_argument("--reset-password", action="store_true", help="重置管理员密码后退出")
+    parser.add_argument("--password", help="与 --init 或 --reset-password 搭配，非交互指定密码")
+    parser.add_argument("--project-name", help="Compose 项目名，多项目目录时必须指定")
+    parser.add_argument(
+        "--accept-panel-upgrade", action="store_true", help="重新登记面板服务保护配置"
+    )
     args = parser.parse_args()
+    if args.init and args.reset_password:
+        parser.error("--init 不能与 --reset-password 同时使用")
+    setup_mode = args.init or args.reset_password or args.accept_panel_upgrade
+    if setup_mode and (args.bg or args.stop):
+        parser.error("初始化或维护模式不能与 --bg/--stop 同时使用")
+    if args.password is not None and not setup_mode:
+        parser.error("--password 需要与 --init 或 --reset-password 搭配")
     if not 1 <= args.port <= 65535:
         parser.error("端口必须在 1 到 65535 之间")
     root = Path(
@@ -148,6 +224,9 @@ def main():
         return
     if args.bg:
         start_background(root, args.mode, args.port)
+        return
+    if setup_mode:
+        run_setup(root, args, parser)
         return
     app = build_app(root, args.mode, os.environ.get("THERESA_COMPOSE_PROJECT"))
     uvicorn.run(

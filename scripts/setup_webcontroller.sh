@@ -9,4 +9,4 @@ docker run --rm -it --entrypoint python \
     -v "$DEPLOY_DIR:$DEPLOY_DIR" \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -w "$DEPLOY_DIR" "$PANEL_IMAGE" \
-    -m web.deployment.setup --root "$DEPLOY_DIR" "$@"
+    -m web.deployment --init --root "$DEPLOY_DIR" "$@"
