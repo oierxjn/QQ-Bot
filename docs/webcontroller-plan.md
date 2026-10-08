@@ -1,6 +1,6 @@
 # WebController v1
 
-扩展：支持 Windows/Linux 纯源码运行，使用 `--mode source --root .` 初始化及启动，监听回环地址。源码模式不依赖 Docker/Compose/QQ/数据库。与 Docker 共用五类 Bot TOML 配置管理，包含基础表单、插件/群聊开关、完整 TOML、离线校验、版本冲突、按文件备份恢复。保存只写入文件，需手动重启 Bot，不提供进程管理或热重载。原有 Compose API 和无参数容器入口保持兼容。
+扩展：支持 Windows/Linux 纯源码运行，使用 `--mode source` 初始化及启动（部署根目录默认取包所在仓库，可用 `--root` 覆盖），监听回环地址。源码模式不依赖 Docker/Compose/QQ/数据库。与 Docker 共用五类 Bot TOML 配置管理，包含基础表单、插件/群聊开关、完整 TOML、离线校验、版本冲突、按文件备份恢复。保存只写入文件，需手动重启 Bot，不提供进程管理或热重载。原有 Compose API 和无参数容器入口保持兼容。
 
 独立 FastAPI 面板管理一个 Linux/WSL Docker Compose 部署。常用配置使用表单，其余使用完整 YAML；独立于 Bot、QQ 登录和数据库。默认仅绑定宿主机 127.0.0.1:7001，使用单管理员登录与 CSRF 验证。Docker socket 只供可信管理员使用。
 

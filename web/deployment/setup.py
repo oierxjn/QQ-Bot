@@ -8,6 +8,7 @@ import re
 import subprocess
 from pathlib import Path
 
+from . import default_source_root
 from .auth import create_credentials
 from .config import ComposeDocument, DeploymentError, atomic_write, plain
 from .toml_config import CONFIG_NAMES, ConfigStore
@@ -135,13 +136,14 @@ def initialize(root: Path, project: str, password=None):
 
 def main():
     parser = argparse.ArgumentParser(description="初始化独立部署面板")
-    parser.add_argument("--root", required=True, type=Path)
+    parser.add_argument("--root", type=Path)
     parser.add_argument("--mode", choices=("source", "compose"), default="compose")
     parser.add_argument("--project-name")
     parser.add_argument("--reset-password", action="store_true")
     parser.add_argument("--accept-panel-upgrade", action="store_true")
     args = parser.parse_args()
-    root = args.root.resolve()
+    default = default_source_root() if args.mode == "source" else Path.cwd()
+    root = (args.root or default).resolve()
     if args.mode == "source":
         if args.accept_panel_upgrade or args.project_name:
             parser.error("源码模式不接受 Compose 维护参数")
@@ -158,7 +160,7 @@ def main():
                 root / ".webcontroller/credentials.json", json.dumps(create_credentials(password))
             )
         initialize_source(root)
-        print("源码面板初始化完成，执行 uv run -m web.deployment --mode source --root .")
+        print("源码面板初始化完成，执行 uv run -m web.deployment --mode source")
         return
     project = discover_project(root, args.project_name)
     # Explicit host-side maintenance commands; never exposed through the web API.

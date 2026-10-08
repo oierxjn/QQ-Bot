@@ -5,6 +5,7 @@ from pathlib import Path
 
 import uvicorn
 
+from . import default_source_root
 from .app import create_app
 from .config import ComposeDocument
 from .runner import ComposeRunner
@@ -36,7 +37,7 @@ def main():
     if not 1 <= args.port <= 65535:
         parser.error("端口必须在 1 到 65535 之间")
     root = args.root or (
-        Path.cwd() if args.mode == "source" else Path(os.environ["THERESA_DEPLOY_DIR"])
+        default_source_root() if args.mode == "source" else Path(os.environ["THERESA_DEPLOY_DIR"])
     )
     app = build_app(root, args.mode, os.environ.get("THERESA_COMPOSE_PROJECT"))
     uvicorn.run(

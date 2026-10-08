@@ -98,8 +98,8 @@ uv run scripts/create_tables.py
 源码部署也支持独立 WebController。完成 `uv sync --no-dev` 后，可以先初始化和启动面板，通过浏览器编辑五类 TOML 配置；面板不需要 Docker，也不依赖 Bot、QQ 登录或数据库连接：
 
 ```bash
-uv run -m web.deployment.setup --mode source --root .
-uv run -m web.deployment --mode source --root .
+uv run -m web.deployment.setup --mode source
+uv run -m web.deployment --mode source
 ```
 
 初始化只从模板补齐缺失文件，不覆盖已有配置。访问 `http://127.0.0.1:7001`，保存配置后手动重启 Bot。面板和 Bot 在不同终端或独立服务中运行。Windows 和 Linux 均支持，更多启动、密码重置及后台运行说明见 [WebController 文档](docs/webcontroller.md)。

@@ -8,8 +8,8 @@
 
 ```bash
 uv sync --no-dev
-uv run -m web.deployment.setup --mode source --root .
-uv run -m web.deployment --mode source --root .
+uv run -m web.deployment.setup --mode source
+uv run -m web.deployment --mode source
 ```
 
 初始化交互设置管理员密码，从 `configs/*.toml.template` 补齐五类缺失配置，不覆盖已有文件；重复执行保留密码。设置与密码哈希存放于 `.webcontroller/`，不写入 `.env`。源码与 Compose 模式不能混用同一个已初始化的状态目录。
@@ -19,7 +19,7 @@ uv run -m web.deployment --mode source --root .
 面板与 `uv run main.py` 分开运行。面板不会启动、停止或自动重启 Bot，也不执行数据库初始化。忘记密码时执行：
 
 ```bash
-uv run -m web.deployment.setup --mode source --root . --reset-password
+uv run -m web.deployment.setup --mode source --reset-password
 ```
 
 重启面板后使用新密码登录。Linux 状态目录与文件限制为当前用户访问；Windows 使用用户目录的 Windows ACL，请将项目放在可信用户目录内，不与不可信用户共享配置和备份。
@@ -34,7 +34,7 @@ After=network.target
 [Service]
 User=your-user
 WorkingDirectory=/home/your-user/QQ-Bot
-ExecStart=/home/your-user/.local/bin/uv run --frozen --no-dev -m web.deployment --mode source --root /home/your-user/QQ-Bot
+ExecStart=/home/your-user/.local/bin/uv run --frozen --no-dev -m web.deployment --mode source
 Restart=on-failure
 UMask=0077
 
