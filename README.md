@@ -95,6 +95,15 @@ uv run scripts/create_tables.py
 
 #### 5. 启动 bot
 
+源码部署也支持独立 WebController。完成 `uv sync --no-dev` 后，可以先初始化和启动面板，通过浏览器编辑五类 TOML 配置；面板不需要 Docker，也不依赖 Bot、QQ 登录或数据库连接：
+
+```bash
+uv run -m web.deployment.setup --mode source --root .
+uv run -m web.deployment --mode source --root .
+```
+
+初始化只从模板补齐缺失文件，不覆盖已有配置。访问 `http://127.0.0.1:7001`，保存配置后手动重启 Bot。面板和 Bot 在不同终端或独立服务中运行。Windows 和 Linux 均支持，更多启动、密码重置及后台运行说明见 [WebController 文档](docs/webcontroller.md)。
+
 ```bash
 uv run main.py
 ```
@@ -105,7 +114,7 @@ uv run main.py
 
 ### 方式二：Docker compose 部署
 
-> 对于 Windows 用户，下面的脚本需在 wsl 中执行，或安装 git 后在 git bash 中执行
+> 对于 Windows 用户，下面的脚本需在已安装 Docker Engine 的 WSL 中执行；独立部署面板使用 Linux 路径和 Docker socket。
 
 从 [Github Releases](https://github.com/crane-fog/QQ-Bot/releases/latest) 下载最新 `Theresa-<version>-Docker.tar.gz`，解压、进入目录、执行脚本
 
@@ -130,6 +139,12 @@ bash scripts/docker_compose_init.sh
 
 > 宿主机 `configs/` 目录（以及 `llbot_config/` 目录）会被挂载到容器中，在修改 bot 配置文件后，可使用 `docker compose restart theresa` 使配置生效
 
+### WebController 部署面板
+
+源码和 Docker 部署均支持独立面板，提供 Bot TOML 常用表单、文本编辑、校验、备份和恢复。Docker 模式还提供 Compose 表单/YAML 编辑和一键应用。新 Docker 部署的初始化脚本会设置管理员密码；执行 `docker compose up -d webcontroller` 后访问 `http://127.0.0.1:7001`。面板不依赖 QQ 登录或 Bot 启动。
+
+已有部署升级、SSH 转发、权限说明与配置恢复见 **[WebController 文档](docs/webcontroller.md)**。
+
 ### 配置文件解释
 
 #### 1. `configs/bot.toml` bot 基础信息及 Gitea Webhook 配置
@@ -144,7 +159,7 @@ bash scripts/docker_compose_init.sh
 | ---------------------- | ---------------------------------------------------------------- |
 | server_address         | +\* 监听端的监听地址（即 bot 上报事件的目标地址）                |
 | client_address         | +\* 监听端的事件上报的地址（即 bot 接收事件的监听地址）          |
-| web_controller_address | 目前弃用，bot web 控制面板的监听地址                             |
+| web_controller_address | 旧内嵌面板地址，目前弃用；独立面板默认使用 7001 端口            |
 | bot_name               | 目前无实际用途，bot 的名字                                       |
 | debug                  | 是否开启日志调试模式（true/false）                               |
 | database_enable        | +\* 是否启用 PostgreSQL 数据库（true/false）                     |

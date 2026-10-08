@@ -14,7 +14,7 @@
 ## 其他
 
 - **Gitea Webhook 支持**
-- 重写 WebController，目前弃用
+- WebController：源码与 Docker 共用 TOML 配置管理已支持；后续增加 LLBot 配置联动、进程管理和 profile 服务管理
 - 为 Api 引入 TypedDict
 - 小特完整 agent 流程（记忆）
 - bot 名称加入触发词
