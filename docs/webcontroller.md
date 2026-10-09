@@ -100,7 +100,7 @@ docker compose run --rm --no-deps webcontroller python -m web.deployment --init 
 
 1. 在服务表单编辑镜像、重启策略、环境变量、端口、挂载、依赖与健康检查。结构字段接受 JSON 列表/对象；留空删除字段。点击“更新草稿”或切换到完整 YAML，同步到同一份草稿。
 2. 完整 YAML 可以配置其他 Compose 字段和增加业务服务。第一版管理单个 `compose.yaml`，不支持 `include`、`extends` 或多个文件叠加。
-3. 点击“校验与差异”检查草稿。校验使用实际部署目录和 `.env`，先执行 `docker compose config --quiet`，再检查规范化的依赖与挂载。部署目录内的 bind 源必须已存在，防止误挂载空目录。
+3. 点击“校验与差异”检查草稿。校验把部署目录的宿主机路径作为 `--project-directory`、部署目录内的 `.env`（如存在）作为 `--env-file` 传给 Compose，先执行 `docker compose config --quiet`，再检查规范化的依赖与挂载。部署目录内的相对 bind 源必须已存在，防止误挂载空目录；绝对路径挂载源无法在面板容器内验证，仅透传。
 4. 点击“校验并保存”，检查差异后确认。保存备份后原子替换文件，不会立即更新容器。若文件已被其他操作修改，返回冲突并保留草稿；可下载草稿后重新读取比较。
 5. 点击“应用已保存配置”。面板执行固定项目的 `docker compose up -d --wait --wait-timeout 120`，只选择默认 profile 的非面板服务。可关闭页面，再次登录查看任务。
 
@@ -138,11 +138,10 @@ docker compose restart webcontroller
 
 ```bash
 docker build -f Dockerfile.webcontroller -t heai/theresa-webcontroller:latest .
-bash scripts/setup_webcontroller.sh
 docker compose up -d webcontroller
 ```
 
-初始化脚本可通过 `THERESA_PANEL_IMAGE` 指定其他已有镜像；同时在 Compose 中使用相同镜像。
+面板容器首次启动时自动初始化；镜像版本变更直接修改 `compose.yaml` 中 webcontroller 服务的 `image` 字段。
 
 如果构建机器依赖 HTTP 代理，Docker 服务代理负责镜像拉取；BuildKit 的认证请求也可能由 Docker CLI 进程发起，需要同时给构建进程设置代理。构建阶段的 `uv sync` 则使用 build args。例如（将地址替换为构建机器可达的代理）：
 
