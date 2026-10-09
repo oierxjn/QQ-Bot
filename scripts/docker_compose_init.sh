@@ -115,9 +115,7 @@ for tpl in "$THERESA_DIR"/*.template; do
     fi
 done
 
-echo "初始化独立部署面板..."
-bash ./setup_webcontroller.sh
-
 echo "--------------------------------------------------------"
 echo "请在手动填写 bot 相关配置文件后执行"
-echo "docker compose up"
+echo "docker compose up -d"
+echo "面板随 compose 自动初始化，初始管理员密码生成于 .webcontroller/initial-password"

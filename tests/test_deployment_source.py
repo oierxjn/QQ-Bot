@@ -65,7 +65,7 @@ def test_source_init_without_docker_preserves_existing(source_root):
 def test_mode_conflict(source_root):
     initialize_source(source_root, "test-password")
     with pytest.raises(RuntimeError):
-        build_app(source_root, "compose", "test")
+        build_app(source_root, "compose")
     settings = source_root / ".webcontroller/settings.json"
     settings.write_text(
         json.dumps({"root": str(source_root.resolve()), "project": "test"}), encoding="utf-8"
@@ -133,7 +133,7 @@ def test_source_cli_background_start_and_stop(source_root):
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
-    child = start_background(source_root.resolve(), "source", port)
+    child = start_background(source_root.resolve(), "source", port, root=source_root.resolve())
     record = source_root / ".webcontroller" / "panel.pid"
     try:
         deadline = time.monotonic() + 15

@@ -14,24 +14,25 @@ from . import default_source_root
 from .app import create_app
 from .auth import create_credentials
 from .config import ComposeDocument, DeploymentError, atomic_write
-from .runner import ComposeRunner
+from .runner import ComposeRunner, discover_deployment
 from .setup import discover_project, initialize, initialize_source, print_initial_password
 from .toml_config import ConfigStore
 
+PANEL_DEPLOY_MOUNT = "/deploy"
 
-def build_app(root, mode, project=None):
+
+def build_app(root, mode, local=None):
     root = Path(root).resolve()
-    state = root / ".webcontroller"
+    local = Path(local or root).resolve()
+    state = local / ".webcontroller"
     settings = json.loads((state / "settings.json").read_text(encoding="utf-8"))
     if settings["root"] != str(root) or settings.get("mode", "compose") != mode:
         raise RuntimeError("部署目录/项目名与初始化记录不一致，请检查宿主机配置")
-    if mode == "compose" and settings.get("project") != project:
-        raise RuntimeError("Compose 项目名与初始化记录不一致")
     credentials = json.loads((state / "credentials.json").read_text(encoding="utf-8"))
     if mode == "source":
         return create_app(None, None, credentials, configs=ConfigStore(root, state))
-    document = ComposeDocument(root, state)
-    runner = ComposeRunner(root, settings["project"])
+    document = ComposeDocument(local, state)
+    runner = ComposeRunner(root, settings["project"], local_dir=local)
     return create_app(document, runner, credentials)
 
 
@@ -57,32 +58,25 @@ def process_alive(pid):
     return True
 
 
-def pid_record(root):
-    return root / ".webcontroller" / "panel.pid"
+def pid_record(local):
+    return local / ".webcontroller" / "panel.pid"
 
 
-def start_background(root, mode, port):
-    state = root / ".webcontroller"
+def start_background(local, mode, port, root=None):
+    state = local / ".webcontroller"
     if not state.is_dir():
-        raise SystemExit("状态目录不存在，请先执行 setup 初始化")
-    record = pid_record(root)
+        raise SystemExit("状态目录不存在，请先执行 --init 初始化")
+    record = pid_record(local)
     if record.is_file():
         recorded = record.read_text(encoding="utf-8").strip()
         if recorded.isdigit() and process_alive(int(recorded)):
             raise SystemExit(f"面板已在后台运行（PID {recorded}），如需重启请先执行 --stop")
         record.unlink()
     log_path = state / "panel.log"
-    command = [
-        sys.executable,
-        "-m",
-        "web.deployment",
-        "--mode",
-        mode,
-        "--root",
-        str(root),
-        "--port",
-        str(port),
-    ]
+    command = [sys.executable, "-m", "web.deployment", "--mode", mode]
+    if root is not None:
+        command += ["--root", str(root)]
+    command += ["--port", str(port)]
     flags = (
         {"creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP}
         if os.name == "nt"
@@ -107,8 +101,8 @@ def start_background(root, mode, port):
     return child
 
 
-def stop_background(root):
-    record = pid_record(root)
+def stop_background(local):
+    record = pid_record(local)
     if not record.is_file():
         print("没有正在后台运行的面板")
         return
@@ -137,12 +131,13 @@ def prompt_password(text, explicit):
     return password
 
 
-def run_setup(root, args, parser):
+def run_setup(root, args, parser, local=None):
+    local = Path(local or root).resolve()
     if args.mode == "source":
         if args.accept_panel_upgrade or args.project_name:
             parser.error("源码模式不接受 Compose 维护参数")
         if args.reset_password:
-            settings_path = root / ".webcontroller" / "settings.json"
+            settings_path = local / ".webcontroller" / "settings.json"
             if not settings_path.is_file():
                 raise DeploymentError("面板尚未初始化，请先执行 --init")
             settings = json.loads(settings_path.read_text(encoding="utf-8"))
@@ -150,18 +145,18 @@ def run_setup(root, args, parser):
                 raise DeploymentError("部署目录或模式不一致")
             password = prompt_password("新管理员密码: ", args.password)
             atomic_write(
-                root / ".webcontroller/credentials.json", json.dumps(create_credentials(password))
+                local / ".webcontroller/credentials.json", json.dumps(create_credentials(password))
             )
-            (root / ".webcontroller/initial-password").unlink(missing_ok=True)
+            (local / ".webcontroller/initial-password").unlink(missing_ok=True)
             print("管理员密码已重置，重启面板后使用新密码登录")
             return
         initialize_source(root, args.password)
         print("源码面板初始化完成，执行 uv run -m web.deployment --mode source")
-        print_initial_password(root)
+        print_initial_password(local)
         return
-    project = discover_project(root, args.project_name)
+    project = discover_project(root, args.project_name, local=local)
     # Explicit host-side maintenance commands; never exposed through the web API.
-    state = root / ".webcontroller"
+    state = local / ".webcontroller"
     settings_path = state / "settings.json"
     if settings_path.exists() and json.loads(settings_path.read_text(encoding="utf-8")) != {
         "root": str(root),
@@ -178,13 +173,13 @@ def run_setup(root, args, parser):
         return
     if args.accept_panel_upgrade:
         protected = ComposeDocument.protection(
-            ComposeDocument.decode((root / "compose.yaml").read_text(encoding="utf-8"))
+            ComposeDocument.decode((local / "compose.yaml").read_text(encoding="utf-8"))
         )
         atomic_write(state / "protected.json", json.dumps(protected, ensure_ascii=False))
-    initialize(root, project, args.password)
+    initialize(root, project, args.password, local=local)
     print(f"面板初始化完成，Compose 项目：{project}")
     print("执行 docker compose up -d webcontroller 后访问 http://127.0.0.1:7001")
-    print_initial_password(root)
+    print_initial_password(local)
 
 
 def main():
@@ -211,24 +206,21 @@ def main():
         parser.error("--password 需要与 --init 或 --reset-password 搭配")
     if not 1 <= args.port <= 65535:
         parser.error("端口必须在 1 到 65535 之间")
-    root = Path(
-        args.root
-        or (
-            default_source_root()
-            if args.mode == "source"
-            else Path(os.environ["THERESA_DEPLOY_DIR"])
-        )
-    ).resolve()
+    if args.mode == "source":
+        root = local = (args.root or default_source_root()).resolve()
+    else:
+        local = (args.root or Path(PANEL_DEPLOY_MOUNT)).resolve()
+        root = local if args.root else discover_deployment(local).resolve()
     if args.stop:
-        stop_background(root)
+        stop_background(local)
         return
     if args.bg:
-        start_background(root, args.mode, args.port)
+        start_background(local, args.mode, args.port, root=root if args.mode == "source" else None)
         return
     if setup_mode:
-        run_setup(root, args, parser)
+        run_setup(root, args, parser, local=local)
         return
-    app = build_app(root, args.mode, os.environ.get("THERESA_COMPOSE_PROJECT"))
+    app = build_app(root, args.mode, local=local)
     uvicorn.run(
         app,
         host="127.0.0.1" if args.mode == "source" else "0.0.0.0",

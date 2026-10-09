@@ -2,10 +2,35 @@ import asyncio
 import json
 import os
 import re
+import subprocess
 import tempfile
 from pathlib import Path
 
 from .config import ComposeDocument, DeploymentError, plain
+
+
+def discover_deployment(local: Path) -> Path:
+    """Derive the host deploy directory from this container's own mount table."""
+    hostname = os.environ.get("HOSTNAME", "")
+    if not re.fullmatch(r"[a-f0-9]{12,64}", hostname):
+        raise DeploymentError(
+            "面板需由 Compose 服务启动，或在宿主机用 --root 显式指定部署目录", 503
+        )
+    result = subprocess.run(
+        ["docker", "inspect", hostname, "--format", "{{json .Mounts}}"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode:
+        raise DeploymentError("无法访问 Docker socket，请检查面板容器的 socket 挂载", 503)
+    for mount in json.loads(result.stdout):
+        if (
+            mount.get("Type") == "bind"
+            and Path(mount.get("Destination", "")) == local
+            and mount.get("RW")
+        ):
+            return Path(mount["Source"])
+    raise DeploymentError(f"部署目录必须以读写方式挂载到容器的 {local}", 503)
 
 
 def sensitive_values(value, values, sensitive=False):
@@ -32,11 +57,19 @@ class ComposeRunner:
     """Docker subprocess boundary. No request can supply arbitrary CLI arguments."""
 
     def __init__(
-        self, root: Path, project: str, panel_service="webcontroller", verify_container=True
+        self,
+        project_dir: Path,
+        project: str,
+        panel_service="webcontroller",
+        verify_container=True,
+        local_dir=None,
     ):
         if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", project):
             raise DeploymentError("无效的 Compose 项目名称")
-        self.root = root.resolve()
+        # project_dir is the host path handed to --project-directory so the daemon resolves
+        # bind sources correctly; local is where this process can actually read the files.
+        self.project_dir = Path(project_dir).resolve()
+        self.local = Path(local_dir or project_dir).resolve()
         self.project = project
         self.panel_service = panel_service
         self.verify_container = verify_container
@@ -46,14 +79,17 @@ class ComposeRunner:
             "--ansi",
             "never",
             "--project-directory",
-            str(self.root),
+            str(self.project_dir),
             "-p",
             project,
         ]
+        env_file = self.local / ".env"
+        if env_file.is_file():
+            self.prefix += ["--env-file", str(env_file)]
         self.environment = {
             key: value for key, value in os.environ.items() if not key.startswith("COMPOSE_")
         }
-        # v1 applies only default-profile services, irrespective of the panel's own environment.
+        # Only default-profile services are applied, irrespective of the panel's own environment.
         self.environment["COMPOSE_PROFILES"] = ""
         self.known_sensitive = set()
 
@@ -61,7 +97,7 @@ class ComposeRunner:
         values = self.known_sensitive.copy()
         if source:
             sensitive_values(plain(ComposeDocument.decode(source)), values)
-        env_file = self.root / ".env"
+        env_file = self.local / ".env"
         if env_file.is_file():
             for line in env_file.read_text(encoding="utf-8").splitlines():
                 if "=" in line and not line.lstrip().startswith("#"):
@@ -88,7 +124,7 @@ class ComposeRunner:
         try:
             process = await asyncio.create_subprocess_exec(
                 *args,
-                cwd=self.root,
+                cwd=self.local,
                 env=self.environment,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -153,17 +189,17 @@ class ComposeRunner:
             raise DeploymentError("面板容器的 Compose 项目身份与配置不一致", 503)
         if not any(
             mount.get("Type") == "bind"
-            and mount.get("Source") == str(self.root)
-            and mount.get("Destination") == str(self.root)
+            and mount.get("Source") == str(self.project_dir)
+            and mount.get("Destination") == str(self.local)
             and mount.get("RW")
             for mount in result.get("Mounts", [])
         ):
-            raise DeploymentError("部署目录必须以相同绝对路径读写挂载进面板", 503)
+            raise DeploymentError("部署目录必须以读写方式挂载到面板容器的 /deploy", 503)
 
     async def validate(self, source):
         await self.identity()
         descriptor, temporary = tempfile.mkstemp(
-            prefix=".compose-check-", suffix=".yaml", dir=self.root
+            prefix=".compose-check-", suffix=".yaml", dir=self.local
         )
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as output:
@@ -189,10 +225,14 @@ class ComposeRunner:
                 for mount in service.get("volumes", []):
                     if mount.get("type") == "bind":
                         host_path = Path(mount["source"]).resolve()
-                        # config --quiet cannot verify host resources; relative binds must exist
-                        # in the shared directory to avoid silently creating empty directories.
-                        if host_path.is_relative_to(self.root) and not host_path.exists():
-                            raise DeploymentError(f"挂载源路径不存在：{host_path}")
+                        # config --quiet cannot verify host resources; binds under the deploy
+                        # directory must exist to avoid silently creating empty directories.
+                        # The host path itself is not visible inside the panel container, so
+                        # existence is checked through the mounted view.
+                        if host_path.is_relative_to(self.project_dir):
+                            relative = host_path.relative_to(self.project_dir)
+                            if not (self.local / relative).exists():
+                                raise DeploymentError(f"挂载源路径不存在：{host_path}")
             return result
         finally:
             Path(temporary).unlink(missing_ok=True)
@@ -200,7 +240,8 @@ class ComposeRunner:
     async def status(self):
         await self.identity()
         output = await self.execute(
-            self.prefix + ["-f", str(self.root / "compose.yaml"), "ps", "--all", "--format", "json"]
+            self.prefix
+            + ["-f", str(self.local / "compose.yaml"), "ps", "--all", "--format", "json"]
         )
         try:
             value = json.loads(output or "[]")
@@ -219,14 +260,14 @@ class ComposeRunner:
         ]
         if not targets:
             raise DeploymentError("没有可应用的默认 profile 服务")
-        if (self.root / "compose.yaml").read_text(encoding="utf-8") != source:
+        if (self.local / "compose.yaml").read_text(encoding="utf-8") != source:
             raise DeploymentError("配置已被其他操作修改", 409)
         emit("开始应用：" + ", ".join(targets) + "\n")
         await self.execute(
             self.prefix
             + [
                 "-f",
-                str(self.root / "compose.yaml"),
+                str(self.local / "compose.yaml"),
                 "up",
                 "-d",
                 "--wait",

@@ -1,15 +1,12 @@
 services:
     webcontroller:
         image: heai/theresa-webcontroller:latest
-        environment:
-            THERESA_DEPLOY_DIR: ${THERESA_DEPLOY_DIR:?请先执行 scripts/setup_webcontroller.sh}
-            THERESA_COMPOSE_PROJECT: ${THERESA_COMPOSE_PROJECT:?请先初始化面板项目名}
         ports:
             - "127.0.0.1:7001:7001"
         volumes:
             - type: bind
-              source: ${THERESA_DEPLOY_DIR:?请先初始化面板}
-              target: ${THERESA_DEPLOY_DIR:?请先初始化面板}
+              source: .
+              target: /deploy
             - /var/run/docker.sock:/var/run/docker.sock
         restart: unless-stopped
 

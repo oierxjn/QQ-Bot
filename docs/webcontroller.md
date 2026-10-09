@@ -60,11 +60,13 @@ Bot 基础配置提供表单，密码和令牌默认遮蔽；插件提供全局�
 
 支持 Linux Docker Engine 和 WSL 内的 Linux Docker Engine。宿主机需要 Docker 与 Compose 插件，不需要 Python/uv。
 
-执行发布包中的 `bash scripts/docker_compose_init.sh`，完成原有 QQ/LLBot/数据库配置初始化后，脚本自动初始化面板。初始面板密码自动生成，存于 `.webcontroller/initial-password`，首次成功登录后自动删除；与 LLBot WebUI 密码独立。
+执行发布包中的 `bash scripts/docker_compose_init.sh` 生成 `configs/*.toml` 配置模板，手动填写后执行：
 
 ```bash
-docker compose up -d webcontroller
+docker compose up -d
 ```
+
+面板服务随 compose 启动并在容器内自动初始化（识别已有容器标签确定 Compose 项目名），初始面板密码自动生成，存于 `.webcontroller/initial-password`，首次成功登录后自动删除；与 LLBot WebUI 密码独立。面板把部署目录以 `source: .` 挂载到容器内固定路径 `/deploy`，启动时通过 Docker socket 反查宿主机路径，`compose.yaml` 不需要任何部署目录变量。
 
 访问 `http://127.0.0.1:7001`。远程服务器使用 SSH 转发：
 
@@ -78,22 +80,21 @@ ssh -L 7001:127.0.0.1:7001 user@server
 
 ## 已有部署升级
 
-不要重新执行 `docker_compose_init.sh`，它用于首次初始化。保留当前 `compose.yaml` 与配置，在 Compose 的 services 中加入新版提供的 `webcontroller` 服务块，再放入 `scripts/setup_webcontroller.sh`：
+不要重新执行 `docker_compose_init.sh`，它用于首次初始化。保留当前 `compose.yaml` 与配置，在 Compose 的 services 中加入新版提供的 `webcontroller` 服务块（`source: .` 挂载到 `/deploy` 加 docker socket，无环境变量），然后执行：
 
 ```bash
-bash scripts/setup_webcontroller.sh
 docker compose up -d webcontroller
 ```
 
-初始化从已有容器标签识别原 Compose 项目名称。目录对应多个项目时，必须明确指定：
+面板容器首次启动时自动初始化，从已有容器标签识别原 Compose 项目名称。目录对应多个项目时，在宿主机明确指定：
 
 ```bash
-bash scripts/setup_webcontroller.sh --project-name existing-project
+docker compose run --rm --no-deps webcontroller python -m web.deployment --init --project-name existing-project
 ```
 
-脚本将部署目录和固定项目名写入 `.env`，保留其他变量，并设置 `COMPOSE_PROJECT_NAME`，确保宿主机和面板使用相同项目。密码哈希、会话密钥、受保护配置、备份和任务保存在 `.webcontroller/`；文件权限为 0600、状态目录为 0700。这些文件不应提交到 Git 或打包进镜像。
+`scripts/setup_webcontroller.sh` 保留为宿主机维护入口（重置密码、登记保护配置等），内部通过 `docker compose run` 执行同一命令。密码哈希、会话密钥、受保护配置、备份和任务保存在 `.webcontroller/`；文件权限为 0600、状态目录为 0700。这些文件不应提交到 Git 或打包进镜像。
 
-部署目录必须以相同绝对路径挂载进面板，这是 Docker 守护进程正确解析宿主机 bind mount 的必要条件。移动部署目录或更换项目名称需要重新核对已有容器和卷，不要直接修改 `.env` 后继续使用。
+面板把部署目录挂载到容器内 `/deploy`，并通过 Docker API 反查宿主机真实路径用于 `--project-directory`，因此业务服务的相对 bind 挂载源仍按宿主机路径解析。绝对路径挂载源无法在容器内验证存在性，仅部署目录下的相对源做存在性校验。移动部署目录后需重新初始化面板身份。
 
 ## 编辑与应用
 

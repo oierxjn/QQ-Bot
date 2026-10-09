@@ -41,7 +41,8 @@ def initialize_source(root: Path, password=None):
     return store
 
 
-def discover_project(root: Path, explicit=None):
+def discover_project(root: Path, explicit=None, local=None):
+    base = (local or root).resolve()
     result = subprocess.run(
         [
             "docker",
@@ -69,9 +70,9 @@ def discover_project(root: Path, explicit=None):
         project = next(iter(projects))
     else:
         name = plain(
-            ComposeDocument.decode((root / "compose.yaml").read_text(encoding="utf-8"))
+            ComposeDocument.decode((base / "compose.yaml").read_text(encoding="utf-8"))
         ).get("name")
-        env_path = root / ".env"
+        env_path = base / ".env"
         if env_path.is_file():
             match = re.search(
                 r"^\s*(?:export\s+)?COMPOSE_PROJECT_NAME\s*=\s*(.*?)\s*$",
@@ -88,14 +89,15 @@ def discover_project(root: Path, explicit=None):
     return project
 
 
-def initialize(root: Path, project: str, password=None):
+def initialize(root: Path, project: str, password=None, local=None):
     root = root.resolve()
-    state = root / ".webcontroller"
+    local = (local or root).resolve()
+    state = local / ".webcontroller"
     settings_path = state / "settings.json"
     settings = {"root": str(root), "project": project}
     if settings_path.exists() and json.loads(settings_path.read_text(encoding="utf-8")) != settings:
         raise DeploymentError("已初始化的部署目录或项目名不同，拒绝覆盖")
-    document = ComposeDocument(root, state)
+    document = ComposeDocument(local, state)
     document.parse(document.source())
     credentials = state / "credentials.json"
     if not credentials.exists():
@@ -104,33 +106,14 @@ def initialize(root: Path, project: str, password=None):
             atomic_write(state / "initial-password", password + "\n")
         atomic_write(credentials, json.dumps(create_credentials(password)))
     atomic_write(settings_path, json.dumps(settings))
-    env_path = root / ".env"
-    source = env_path.read_text(encoding="utf-8") if env_path.exists() else ""
-    keys = {
-        "THERESA_DEPLOY_DIR": str(root),
-        "THERESA_COMPOSE_PROJECT": project,
-        "COMPOSE_PROJECT_NAME": project,
-    }
-    lines = [
-        line
-        for line in source.splitlines()
-        if not re.match(
-            r"\s*(?:export\s+)?(?:THERESA_DEPLOY_DIR|THERESA_COMPOSE_PROJECT|COMPOSE_PROJECT_NAME)\s*=",
-            line,
-        )
-    ]
-    for key, value in keys.items():
-        escaped = value.replace("\\", "\\\\").replace("'", "\\'")
-        lines.append(f"{key}='{escaped}'")
-    atomic_write(env_path, "\n".join(lines) + "\n")
     for directory in (state, state / "backups", state / "tasks"):
         directory.mkdir(exist_ok=True, mode=0o700)
         directory.chmod(0o700)
     return document
 
 
-def print_initial_password(root: Path):
-    initial = root / ".webcontroller" / "initial-password"
+def print_initial_password(local: Path):
+    initial = local / ".webcontroller" / "initial-password"
     if initial.exists():
         print(f"初始管理员密码已生成：{initial}")
-        print("首次成功登录后面板会删除该文件；请尽快用 setup --reset-password 修改密码。")
+        print("首次成功登录后面板会删除该文件；请尽快用 --reset-password 修改密码。")

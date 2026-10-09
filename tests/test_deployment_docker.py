@@ -104,12 +104,8 @@ async def test_actual_panel_container_login_and_one_click_apply(tmp_path):
         "services": {
             "webcontroller": {
                 "image": image,
-                "environment": {
-                    "THERESA_DEPLOY_DIR": str(tmp_path),
-                    "THERESA_COMPOSE_PROJECT": project,
-                },
                 "ports": ["127.0.0.1::7001"],
-                "volumes": [f"{tmp_path}:{tmp_path}", "/var/run/docker.sock:/var/run/docker.sock"],
+                "volumes": [f"{tmp_path}:/deploy", "/var/run/docker.sock:/var/run/docker.sock"],
             },
             "worker": {
                 "image": "alpine:3.21",
