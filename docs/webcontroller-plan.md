@@ -11,3 +11,9 @@
 成功标准：Bot 不可用时仍能访问面板；编辑不丢失未知字段或注释；无效配置和外部修改不被覆盖；应用目标为原部署；网页断开后任务继续；失败及中断可见。备份恢复仅恢复配置，不回滚数据库或卷数据。
 
 验证：`uv run pytest`、`uv run ruff check .`、`uv run ruff format --check .`，隔离 Docker 集成测试与真实浏览器交互。Docker 不可用时记录未完成的环境验证，不操作真实部署。
+
+## v2 方向：消除部署目录变量（已在 VM 验证可行）
+
+v1 用 `THERESA_DEPLOY_DIR` 把部署目录以相同绝对路径挂进面板容器，`compose.yaml` 的 `${THERESA_DEPLOY_DIR:?}` 造成"先初始化写 .env、有 .env 才能起容器"的引导依赖。替代方案（2026-10-09 在 Ubuntu VM 的 docker:cli 镜像内验证）：webcontroller 服务改用 `source: .` 挂到容器内固定路径 `/deploy`（相对挂载源由 compose 解析，无需变量）；面板启动时 `docker inspect` 自身容器，从 Mounts 反查宿主机部署目录；所有 compose 调用改为 `docker compose -p <项目名> --project-directory <宿主机路径> --env-file /deploy/.env -f /deploy/compose.yaml …`。Compose v2 接受 CLI 侧不存在的 `--project-directory`，相对 bind 源按其解析为宿主机真实路径并发给 daemon，项目名按其目录名推导、与宿主机一致。
+
+该方案下 `compose.yaml` 无必填变量，首次部署收敛为一条 `docker compose up -d webcontroller`：入口脚本 init-if-needed 后 exec 服务进程，`setup_webcontroller.sh` 一次性容器与 `.env` 身份固定退役，项目名靠容器标签发现，初始密码文件仍落在宿主机 `.webcontroller/initial-password`。约束与风险：仅支持 Linux/WSL Docker Engine（Docker Desktop 的挂载源是 VM 内部路径）；`include`/`extends` 仍不支持；面板的 compose 调用、config 校验、身份校验与 Docker 集成测试需整体重写，作为 v2 独立实施，不阻塞 v1 部署验收。
