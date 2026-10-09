@@ -98,7 +98,6 @@ uv run scripts/create_tables.py
 源码部署也支持独立 WebController。完成 `uv sync --no-dev` 后，可以先初始化和启动面板，通过浏览器编辑五类 TOML 配置；面板不需要 Docker，也不依赖 Bot、QQ 登录或数据库连接：
 
 ```bash
-uv run -m web.deployment --mode source --init
 uv run -m web.deployment --mode source
 ```
 

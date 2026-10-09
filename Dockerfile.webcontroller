@@ -11,5 +11,5 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY web/deployment ./web/deployment
 
-# First boot initializes credentials and identity in /deploy, then serves.
-CMD ["sh", "-c", "[ -f /deploy/.webcontroller/settings.json ] || python -m web.deployment --init; exec python -m web.deployment"]
+# Serving auto-initializes credentials and identity in /deploy on first boot.
+CMD ["python", "-m", "web.deployment"]

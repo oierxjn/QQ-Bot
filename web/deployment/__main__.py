@@ -98,6 +98,7 @@ def start_background(local, mode, port, root=None):
     print(f"面板已在后台运行（PID {child.pid}）")
     print(f"日志：{log_path}")
     print(f"停止：uv run -m web.deployment --mode {mode} --stop")
+    print_initial_password(local)
     return child
 
 
@@ -220,6 +221,15 @@ def main():
     if setup_mode:
         run_setup(root, args, parser, local=local)
         return
+    if not (local / ".webcontroller" / "settings.json").is_file():
+        try:
+            if args.mode == "source":
+                initialize_source(root, None)
+            else:
+                initialize(root, discover_project(root, None, local=local), None, local=local)
+        except DeploymentError as exc:
+            raise SystemExit(f"自动初始化失败：{exc}") from None
+        print_initial_password(local)
     app = build_app(root, args.mode, local=local)
     uvicorn.run(
         app,

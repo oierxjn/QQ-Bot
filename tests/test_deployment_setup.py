@@ -152,6 +152,20 @@ def test_runner_splits_project_dir_and_local_files(tmp_path):
     assert runner.local == Path("/deploy").resolve()
 
 
+def test_serve_auto_initializes(tmp_path, monkeypatch):
+    configs = tmp_path / "configs"
+    configs.mkdir()
+    for name in CONFIG_NAMES:
+        (configs / f"{name}.template").write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        sys, "argv", ["web.deployment", "--mode", "source", "--root", str(tmp_path)]
+    )
+    monkeypatch.setattr("web.deployment.__main__.uvicorn.run", lambda *args, **kwargs: None)
+    main()
+    assert (tmp_path / ".webcontroller" / "settings.json").is_file()
+    assert (tmp_path / ".webcontroller" / "initial-password").is_file()
+
+
 def test_source_init_with_explicit_password(tmp_path):
     configs = tmp_path / "configs"
     configs.mkdir()

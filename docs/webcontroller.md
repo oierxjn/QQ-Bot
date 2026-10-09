@@ -8,9 +8,10 @@
 
 ```bash
 uv sync --no-dev
-uv run -m web.deployment --mode source --init
 uv run -m web.deployment --mode source
 ```
+
+首次运行自动初始化：生成随机管理员密码文件、从 `configs/*.toml.template` 补齐缺失配置，然后启动服务；也可先执行 `uv run -m web.deployment --mode source --init` 显式初始化后退出。
 
 初始化自动生成随机管理员密码，写入 `.webcontroller/initial-password`（仅当前用户可读），终端只提示文件路径，不显示密码内容；首次成功登录后面板自动删除该文件，请尽快用 `--reset-password` 设置自己的密码。也可在 `--init` 或 `--reset-password` 时用 `--password` 非交互指定密码，此时不生成密码文件。密码长度不限制，仅以 scrypt 哈希存储，强度由使用者自行负责。初始化从 `configs/*.toml.template` 补齐五类缺失配置，不覆盖已有文件；重复执行保留密码。设置与密码哈希存放于 `.webcontroller/`，不写入 `.env`。源码与 Compose 模式不能混用同一个已初始化的状态目录。
 
