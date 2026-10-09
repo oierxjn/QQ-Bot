@@ -1,6 +1,6 @@
 # 独立部署面板
 
-面板独立于 Bot 启动，QQ 未登录、Bot 配置错误或 Theresa 停止时仍可使用。源码和 Docker 模式均提供 TOML 配置管理、校验、差异及备份恢复；Docker 模式另外提供 Compose 表单/YAML、一键应用、任务日志和容器状态。
+面板独立于 Bot 启动，QQ 未登录、Bot 配置错误或 Bot 停止时仍可使用。源码和 Docker 模式均提供 TOML 配置管理、校验、差异及备份恢复；Docker 模式另外提供 Compose 表单/YAML、一键应用、任务日志和容器状态。
 
 ## 纯源码部署（Windows / Linux）
 
@@ -11,7 +11,7 @@ uv sync --no-dev
 uv run -m web.deployment --mode source
 ```
 
-首次运行自动初始化：生成随机管理员密码文件、从 `configs/*.toml.template` 补齐缺失配置，然后启动服务；也可先执行 `uv run -m web.deployment --mode source --init` 显式初始化后退出。
+首次运行自动初始化并启动服务；也可先执行 `uv run -m web.deployment --mode source --init` 只初始化不启动。
 
 初始化自动生成随机管理员密码，写入 `.webcontroller/initial-password`（仅当前用户可读），终端只提示文件路径，不显示密码内容；首次成功登录后面板自动删除该文件，请尽快用 `--reset-password` 设置自己的密码。也可在 `--init` 或 `--reset-password` 时用 `--password` 非交互指定密码，此时不生成密码文件。密码长度不限制，仅以 scrypt 哈希存储，强度由使用者自行负责。初始化从 `configs/*.toml.template` 补齐五类缺失配置，不覆盖已有文件；重复执行保留密码。设置与密码哈希存放于 `.webcontroller/`，不写入 `.env`。源码与 Compose 模式不能混用同一个已初始化的状态目录。
 
@@ -47,7 +47,7 @@ WantedBy=multi-user.target
 
 ## Bot TOML 配置管理（两种部署共用）
 
-源码模式仅显示 Bot 配置，Docker 模式可切换到“Bot 配置”。只允许管理 `bot.toml`、`plugins.toml`、`groups.toml`、`ai.toml`、`scheduler.toml`，不能编辑任意宿主机文件。
+两种部署共用同一套 Bot TOML 管理。源码模式下面板只有这一部分；Docker 模式下面板另有 Compose 部署页，通过页签切换到“Bot 配置”。只允许管理 `bot.toml`、`plugins.toml`、`groups.toml`、`ai.toml`、`scheduler.toml`，不能编辑任意宿主机文件。
 
 Bot 基础配置提供表单，密码和令牌默认遮蔽；插件提供全局启用开关，群聊提供群配置增删与插件开关。复杂参数、AI 与定时任务使用完整 TOML。表单与文本共享草稿，保留注释和未知字段。缺失或语法错误的配置可以通过完整 TOML 修复；切换文件和重新读取前会提示未保存草稿。
 
@@ -135,7 +135,7 @@ docker compose restart webcontroller
 
 ## 本地构建与验证
 
-首次发布前，或从源码部署时，先在 Linux/WSL 构建面板镜像：
+首次发布前，或暂不使用已发布镜像时，先在 Linux/WSL 构建面板镜像：
 
 ```bash
 docker build -f Dockerfile.webcontroller -t heai/theresa-webcontroller:latest .

@@ -4,7 +4,7 @@
 
 独立 FastAPI 面板管理一个 Linux/WSL Docker Compose 部署。常用配置使用表单，其余使用完整 YAML；独立于 Bot、QQ 登录和数据库。默认仅绑定宿主机 127.0.0.1:7001，使用单管理员登录与 CSRF 验证。Docker socket 只供可信管理员使用。
 
-配置保存必须校验 YAML 与实际 Compose 上下文、检查版本冲突、备份后原子替换。面板服务、项目身份及面板网络/卷受保护。面板配置升级在宿主机执行。应用使用固定项目名和同路径部署目录，运行非面板服务的 `up -d`，不执行 down、卷删除或孤立容器清理。
+配置保存必须校验 YAML 与实际 Compose 上下文、检查版本冲突、备份后原子替换。面板服务、项目身份及面板网络/卷受保护。面板配置升级在宿主机执行。应用使用固定项目名和同路径部署目录（v2 已改为固定 `/deploy` 挂载，见下节），运行非面板服务的 `up -d`，不执行 down、卷删除或孤立容器清理。
 
 实施顺序：独立入口和鉴权 → 文档校验与备份 → 表单/YAML 同步 → 持久化应用任务和状态 → 镜像、初始化、发布与文档。每步执行相关测试。
 
@@ -12,7 +12,7 @@
 
 验证：`uv run pytest`、`uv run ruff check .`、`uv run ruff format --check .`，隔离 Docker 集成测试与真实浏览器交互。Docker 不可用时记录未完成的环境验证，不操作真实部署。
 
-## v2 方向：消除部署目录变量（已在 VM 验证可行）
+## v2：消除部署目录变量（已实施）
 
 v1 用 `THERESA_DEPLOY_DIR` 把部署目录以相同绝对路径挂进面板容器，`compose.yaml` 的 `${THERESA_DEPLOY_DIR:?}` 造成"先初始化写 .env、有 .env 才能起容器"的引导依赖。替代方案（2026-10-09 在 Ubuntu VM 的 docker:cli 镜像内验证）：webcontroller 服务改用 `source: .` 挂到容器内固定路径 `/deploy`（相对挂载源由 compose 解析，无需变量）；面板启动时 `docker inspect` 自身容器，从 Mounts 反查宿主机部署目录；所有 compose 调用改为 `docker compose -p <项目名> --project-directory <宿主机路径> --env-file /deploy/.env -f /deploy/compose.yaml …`。Compose v2 接受 CLI 侧不存在的 `--project-directory`，相对 bind 源按其解析为宿主机真实路径并发给 daemon，项目名按其目录名推导、与宿主机一致。
 
