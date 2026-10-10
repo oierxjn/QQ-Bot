@@ -89,7 +89,7 @@ class ComposeRunner:
         self.environment = {
             key: value for key, value in os.environ.items() if not key.startswith("COMPOSE_")
         }
-        # Only default-profile services are applied, irrespective of the panel's own environment.
+        # Host Compose environment variables must not alter the panel's compose invocations.
         self.environment["COMPOSE_PROFILES"] = ""
         self.known_sensitive = set()
 
@@ -118,8 +118,7 @@ class ComposeRunner:
             text,
         )
 
-    async def execute(self, args, source="", emit=None, timeout=60):
-        # Parse YAML once per command, rather than on every streamed output line.
+    async def execute(self, args, source="", timeout=60):
         values = self.redaction_values(source)
         try:
             process = await asyncio.create_subprocess_exec(
@@ -136,21 +135,10 @@ class ComposeRunner:
         chunks = {"stdout": bytearray(), "stderr": bytearray()}
 
         async def read(stream, name):
-            pending = bytearray()
             while chunk := await stream.read(4096):
                 chunks[name].extend(chunk)
                 if len(chunks[name]) > 4 * 1024 * 1024:
                     raise DeploymentError("Docker 输出超过限制", 503)
-                if emit:
-                    pending.extend(chunk)
-                    while b"\n" in pending:
-                        line, _, remainder = pending.partition(b"\n")
-                        pending = bytearray(remainder)
-                        emit(self.redact(line.decode(errors="replace") + "\n", values=values))
-                    if len(pending) > 64 * 1024:
-                        raise DeploymentError("Docker 单行输出超过限制", 503)
-            if emit and pending:
-                emit(self.redact(pending.decode(errors="replace"), values=values))
 
         async def monitor():
             await asyncio.gather(
@@ -250,34 +238,3 @@ class ComposeRunner:
             statuses = [json.loads(line) for line in output.splitlines() if line.strip()]
         keys = {"Service", "Name", "State", "Health", "ExitCode"}
         return [{key: value for key, value in status.items() if key in keys} for status in statuses]
-
-    async def apply(self, source, emit):
-        config = await self.validate(source)
-        targets = [
-            name
-            for name, service in config["services"].items()
-            if name != self.panel_service and not service.get("profiles")
-        ]
-        if not targets:
-            raise DeploymentError("没有可应用的默认 profile 服务")
-        if (self.local / "compose.yaml").read_text(encoding="utf-8") != source:
-            raise DeploymentError("配置已被其他操作修改", 409)
-        emit("开始应用：" + ", ".join(targets) + "\n")
-        await self.execute(
-            self.prefix
-            + [
-                "-f",
-                str(self.local / "compose.yaml"),
-                "up",
-                "-d",
-                "--wait",
-                "--wait-timeout",
-                "120",
-                "--",
-            ]
-            + targets,
-            source,
-            emit,
-            timeout=900,
-        )
-        return await self.status()

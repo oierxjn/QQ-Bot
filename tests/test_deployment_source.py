@@ -187,12 +187,12 @@ def test_compose_shares_config_and_operation_lock(compose_panel):
     body["source"] = '["123"]\nExample = true\n'
     assert client.get("/api/capabilities").json()["compose"]
     assert client.put("/api/configs/groups.toml", json=body, headers=headers).status_code == 200
-    tasks = client.app.state.tasks
-    client.portal.call(tasks.lock.acquire)
+    tasks = client.app.state.operation_lock
+    client.portal.call(tasks.acquire)
     try:
         current = client.get("/api/configs/groups.toml").json()
         assert (
             client.put("/api/configs/groups.toml", json=current, headers=headers).status_code == 409
         )
     finally:
-        client.portal.call(tasks.lock.release)
+        client.portal.call(tasks.release)

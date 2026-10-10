@@ -36,11 +36,10 @@
       </section>
       <div id="compose-area">
       <div class="heading"><div><p class="eyebrow">DOCKER COMPOSE</p><h1>部署配置</h1></div><span id="save-state" class="badge">正在读取…</span></div>
-      <p class="intro">修改配置后先校验并保存，再应用到容器。面板自身的配置在宿主机修改。</p>
+      <p class="intro">修改配置后校验并保存；容器更新需在宿主机执行 <code>docker compose up -d</code>。面板自身的配置在宿主机修改。</p>
       <div class="toolbar">
         <button id="reload">重新读取</button><button id="download">下载草稿</button>
         <button id="validate">校验与差异</button><button id="save" class="primary">校验并保存</button>
-        <button id="apply" class="primary">应用已保存配置</button>
       </div>
       <nav class="tabs" aria-label="配置编辑方式">
         <button id="form-tab" aria-pressed="true">服务配置</button>
@@ -62,9 +61,8 @@
       <details id="diff-panel"><summary>配置差异</summary><pre id="diff">校验后显示差异。</pre></details>
       <div class="bottom-grid">
         <section class="panel"><div class="heading"><h2>服务状态</h2><button id="refresh-status">刷新</button></div><div id="service-status">尚未查询。</div></section>
-        <section class="panel"><div class="heading"><h2>配置备份</h2><button id="refresh-backups">刷新</button></div><p class="muted">恢复只替换配置文件，不回滚数据库或卷数据。恢复后需要再次应用。</p><div id="backups">尚未查询。</div></section>
+        <section class="panel"><div class="heading"><h2>配置备份</h2><button id="refresh-backups">刷新</button></div><p class="muted">恢复只替换配置文件，不回滚数据库、卷数据或容器状态。</p><div id="backups">尚未查询。</div></section>
       </div>
-      <section class="panel task-panel"><h2>最近一次应用</h2><p id="task-state">尚未执行。</p><pre id="task-output" aria-live="polite"></pre></section>
       </div>
     </div>
   </main>

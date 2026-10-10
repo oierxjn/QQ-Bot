@@ -1,11 +1,9 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
 let csrf = "", version = "", baseline = "", services = {}, selected = "", panel = "webcontroller";
-let formOriginal = {}, view = "form", polling = null, taskRunning = false, pending = false;
-let savedState = "已保存，待应用";
+let formOriginal = {}, view = "form", pending = false;
 const labels = {image: "镜像", restart: "重启策略", environment: "环境变量", ports: "端口映射", volumes: "挂载", depends_on: "依赖关系", healthcheck: "健康检查", profiles: "Profiles"};
 const structured = new Set(["environment", "ports", "volumes", "depends_on", "healthcheck", "profiles"]);
-function applyTargets() { return Object.keys(services).filter((name) => name !== panel && !(services[name]?.profiles?.length)); }
 function notice(text, error = false) { $("notice").textContent = text; $("notice").classList.toggle("error", error); }
 async function api(path, method = "GET", body) {
   const response = await fetch(path, {method, headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: body === undefined ? undefined : JSON.stringify(body)});
@@ -19,9 +17,8 @@ async function api(path, method = "GET", body) {
 function formDirty() { return Object.keys(labels).some((key) => $("field-" + key) && $("field-" + key).value !== formOriginal[key]); }
 function dirty() { return $("source").value !== baseline || formDirty(); }
 function updateState() {
-  $("save-state").textContent = dirty() ? "草稿未保存" : savedState;
-  ["save", "apply", "reload"].forEach((id) => { $(id).disabled = pending || taskRunning; });
-  $("apply").disabled ||= dirty();
+  $("save-state").textContent = dirty() ? "草稿未保存" : "已保存";
+  ["save", "reload"].forEach((id) => { $(id).disabled = pending; });
 }
 async function action(fn) {
   if (pending) return;
@@ -30,7 +27,7 @@ async function action(fn) {
   finally { pending = false; updateState(); }
 }
 function showLogin() {
-  csrf = ""; clearTimeout(polling); taskRunning = false;
+  csrf = "";
   $("login-panel").hidden = false; $("workspace").hidden = true; $("logout").hidden = true;
   $("password").focus();
 }
@@ -88,16 +85,13 @@ function setDocument(data) {
   $("source").value = data.source;
   if (!services[selected]) selected = Object.keys(services).find((name) => name !== panel) || panel;
   renderServices(); renderForm();
-  savedState = data.applied ? "已应用" : "已保存，待应用";
   updateState();
 }
 async function load() {
   const capabilities = await api("/api/capabilities");
   await initializeConfigs(capabilities);
   if (!capabilities.compose) return;
-  const data = await api("/api/compose");
-  setDocument(data);
-  if (data.task) trackTask(data.task);
+  setDocument(await api("/api/compose"));
   await refreshBackups(); await refreshStatus();
 }
 function confirmAction(title, message, diff, callback) {
@@ -123,9 +117,9 @@ async function refreshBackups() {
     button.addEventListener("click", () => action(async () => {
       if (dirty()) throw new Error("请先保存或下载草稿，再恢复备份。");
       const preview = await api("/api/backups/" + backup.id);
-      confirmAction("恢复配置备份", "仅恢复配置文件。当前配置也会备份，恢复后需要再次应用。", preview.diff, async () => {
+      confirmAction("恢复配置备份", "仅恢复配置文件。当前配置也会备份，容器更新需在宿主机执行。", preview.diff, async () => {
         setDocument(await api("/api/backups/" + backup.id + "/restore", "POST", {version}));
-        await refreshBackups(); notice("备份已恢复，尚未应用。");
+        await refreshBackups(); notice("备份已恢复。");
       });
     })); row.append(label, button); $("backups").append(row);
   }
@@ -137,28 +131,10 @@ async function refreshStatus() {
     for (const service of data.services) {
       const row = document.createElement("div"); row.className = "status-row";
       const name = document.createElement("span"); name.textContent = service.Service || service.Name;
-      let hint = "";
-      if (!applyTargets().includes(service.Service)) hint = " · 应用跳过（profile）";
-      else if (service.State && service.State !== "running") hint = " · 应用时将启动";
-      const status = document.createElement("span"); status.textContent = [service.State, service.Health || "未配置健康检查"].join(" · ") + hint;
+      const status = document.createElement("span"); status.textContent = [service.State, service.Health || "未配置健康检查"].join(" · ");
       row.append(name, status); $("service-status").append(row);
     }
   } catch (error) { $("service-status").textContent = error.message; }
-}
-function trackTask(task) {
-  clearTimeout(polling);
-  const states = {running: "正在应用", succeeded: "命令完成，服务已就绪", failed: "应用失败，可能已有部分服务更新", interrupted: "任务中断，请检查实际容器状态"};
-  $("task-state").textContent = states[task.state] || task.state;
-  $("task-output").textContent = task.output; taskRunning = task.state === "running"; updateState();
-  if (taskRunning) polling = setTimeout(async () => {
-    try {
-      const latest = await api("/api/tasks/" + task.id); trackTask(latest);
-      if (latest.state !== "running") {
-        savedState = latest.state === "succeeded" ? "已应用" : "已保存，应用未完成"; updateState();
-        await refreshStatus();
-      }
-    } catch (error) { notice(error.message, true); if (csrf) polling = setTimeout(() => trackTask(task), 3000); }
-  }, 1000);
 }
 $("login-form").addEventListener("submit", (event) => { event.preventDefault(); action(async () => {
   const data = await api("/api/login", "POST", {password: $("password").value}); csrf = data.csrf; $("password").value = "";
@@ -173,16 +149,9 @@ $("yaml-tab").addEventListener("click", () => action(() => switchView("yaml")));
 $("validate").addEventListener("click", () => action(validate));
 $("save").addEventListener("click", () => action(async () => {
   const result = await validate(); const source = $("source").value, originalVersion = version;
-  confirmAction("保存部署配置", "保存前会备份当前文件；保存不会立即修改运行中的容器。", result.diff, async () => {
-    setDocument(await api("/api/compose", "PUT", {source, version: originalVersion})); await refreshBackups(); notice("配置已保存，尚未应用。");
+  confirmAction("保存部署配置", "保存前会备份当前文件；保存不会立即修改运行中的容器。容器更新需在宿主机执行 docker compose up -d。", result.diff, async () => {
+    setDocument(await api("/api/compose", "PUT", {source, version: originalVersion})); await refreshBackups(); notice("配置已保存。容器更新需在宿主机执行 docker compose up -d。");
   });
-}));
-$("apply").addEventListener("click", () => action(async () => {
-  if (dirty()) throw new Error("请先保存草稿。");
-  const targets = applyTargets();
-  if (!targets.length) throw new Error("没有可应用的默认 profile 服务。");
-  const originalVersion = version;
-  confirmAction("应用已保存的配置", "将应用：" + targets.join("、") + "。已停止的目标服务会被重新启动；不更新面板、不清理旧服务或删除卷。", "", async () => { trackTask(await api("/api/compose/apply", "POST", {version: originalVersion})); notice("应用任务已启动，可以关闭页面后重新查看。"); });
 }));
 $("reload").addEventListener("click", () => action(async () => {
   if (dirty()) confirmAction("重新读取配置", "当前草稿将被替换，可先下载草稿。", "", load);

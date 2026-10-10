@@ -100,7 +100,7 @@ def test_source_browser_form_text_conflict_restore_and_groups(tmp_path):
         thread.join(timeout=10)
 
 
-def test_browser_edit_validate_save_apply_restore_and_mobile(tmp_path):
+def test_browser_edit_validate_save_restore_and_mobile(tmp_path):
     from playwright.sync_api import expect, sync_playwright
 
     (tmp_path / "compose.yaml").write_text(SOURCE, encoding="utf-8")
@@ -140,17 +140,15 @@ def test_browser_edit_validate_save_apply_restore_and_mobile(tmp_path):
             page.get_by_role("button", name="校验并保存", exact=True).click()
             expect(page.locator("#confirm-dialog")).to_be_visible()
             page.locator("#confirm-action").click()
-            expect(page.locator("#save-state")).to_have_text("已保存，待应用")
+            expect(page.locator("#save-state")).to_have_text("已保存")
             assert "postgres:19" in document.source()
-            page.get_by_role("button", name="应用已保存配置", exact=True).click()
-            page.locator("#confirm-action").click()
-            expect(page.locator("#task-state")).to_contain_text("命令完成", timeout=10000)
             page.reload()
-            expect(page.locator("#save-state")).to_have_text("已应用")
+            expect(page.locator("#save-state")).to_have_text("已保存")
             page.get_by_role("button", name="预览恢复", exact=True).first.click()
             expect(page.locator("#confirm-diff")).to_contain_text("postgres:18")
             page.locator("#confirm-action").click()
-            expect(page.locator("#save-state")).to_have_text("已保存，待应用")
+            expect(page.locator("#notice")).to_have_text("备份已恢复。")
+            expect(page.locator("#save-state")).to_have_text("已保存")
             assert document.source() == SOURCE
             page.get_by_role("button", name="服务配置", exact=True).click()
             page.locator("#service-list").get_by_role(
