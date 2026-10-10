@@ -15,7 +15,13 @@ from .app import create_app
 from .auth import create_credentials
 from .config import ComposeDocument, DeploymentError, atomic_write
 from .runner import ComposeRunner, discover_deployment
-from .setup import discover_project, initialize, initialize_source, print_initial_password
+from .setup import (
+    adopt_mode,
+    discover_project,
+    initialize,
+    initialize_source,
+    print_initial_password,
+)
 from .toml_config import ConfigStore
 
 PANEL_DEPLOY_MOUNT = "/deploy"
@@ -26,8 +32,14 @@ def build_app(root, mode, local=None):
     local = Path(local or root).resolve()
     state = local / ".webcontroller"
     settings = json.loads((state / "settings.json").read_text(encoding="utf-8"))
-    if settings["root"] != str(root) or settings.get("mode", "compose") != mode:
-        raise RuntimeError("部署目录/项目名与初始化记录不一致，请检查宿主机配置")
+    if settings.get("root") != str(root):
+        raise RuntimeError(
+            f"部署目录与初始化记录不一致：状态记录 {settings.get('root')!r}，当前为 {str(root)!r}"
+        )
+    if settings.get("mode", "compose") != mode:
+        raise RuntimeError(
+            f"初始化模式 {settings.get('mode', 'compose')!r} 与启动模式 {mode!r} 不一致"
+        )
     credentials = json.loads((state / "credentials.json").read_text(encoding="utf-8"))
     if mode == "source":
         return create_app(None, None, credentials, configs=ConfigStore(root, state))
@@ -142,8 +154,10 @@ def run_setup(root, args, parser, local=None):
             if not settings_path.is_file():
                 raise DeploymentError("面板尚未初始化，请先执行 --init")
             settings = json.loads(settings_path.read_text(encoding="utf-8"))
-            if settings != {"root": str(root), "mode": "source"}:
-                raise DeploymentError("部署目录或模式不一致")
+            if settings.get("root") != str(root):
+                raise DeploymentError(
+                    f"状态目录记录的部署目录为 {settings.get('root')!r}，与当前 {str(root)!r} 不同"
+                )
             password = prompt_password("新管理员密码: ", args.password)
             atomic_write(
                 local / ".webcontroller/credentials.json", json.dumps(create_credentials(password))
@@ -159,11 +173,16 @@ def run_setup(root, args, parser, local=None):
     # Explicit host-side maintenance commands; never exposed through the web API.
     state = local / ".webcontroller"
     settings_path = state / "settings.json"
-    if settings_path.exists() and json.loads(settings_path.read_text(encoding="utf-8")) != {
-        "root": str(root),
-        "project": project,
-    }:
-        raise DeploymentError("已初始化的部署目录或项目名不同，拒绝执行维护操作")
+    if settings_path.exists():
+        existing = json.loads(settings_path.read_text(encoding="utf-8"))
+        if existing.get("root") != str(root):
+            raise DeploymentError(
+                f"状态目录记录的部署目录为 {existing.get('root')!r}，与当前 {str(root)!r} 不同"
+            )
+        if existing.get("project", project) != project:
+            raise DeploymentError(
+                f"状态目录记录的 Compose 项目名为 {existing.get('project')!r}，与当前 {project!r} 不同"
+            )
     if args.reset_password:
         if not settings_path.exists():
             raise DeploymentError("面板尚未初始化，请先执行 --init")
@@ -221,15 +240,17 @@ def main():
     if setup_mode:
         run_setup(root, args, parser, local=local)
         return
-    if not (local / ".webcontroller" / "settings.json").is_file():
-        try:
+    try:
+        if not (local / ".webcontroller" / "settings.json").is_file():
             if args.mode == "source":
                 initialize_source(root, None)
             else:
                 initialize(root, discover_project(root, None, local=local), None, local=local)
-        except DeploymentError as exc:
-            raise SystemExit(f"自动初始化失败：{exc}") from None
-        print_initial_password(local)
+            print_initial_password(local)
+        else:
+            adopt_mode(root, args.mode, local=local)
+    except DeploymentError as exc:
+        raise SystemExit(f"初始化或模式切换失败：{exc}") from None
     app = build_app(root, args.mode, local=local)
     uvicorn.run(
         app,

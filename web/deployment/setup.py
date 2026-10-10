@@ -16,8 +16,12 @@ def initialize_source(root: Path, password=None):
     state = root / ".webcontroller"
     settings = {"root": str(root), "mode": "source"}
     settings_path = state / "settings.json"
-    if settings_path.exists() and json.loads(settings_path.read_text(encoding="utf-8")) != settings:
-        raise DeploymentError("已初始化的部署目录或模式不同，拒绝覆盖")
+    if settings_path.exists():
+        existing = json.loads(settings_path.read_text(encoding="utf-8"))
+        if existing.get("root") != settings["root"]:
+            raise DeploymentError(
+                f"已初始化的部署目录不同：状态记录 {existing.get('root')!r}，当前 {settings['root']!r}"
+            )
     store = ConfigStore(root, state)
     missing = []
     for name in CONFIG_NAMES:
@@ -94,9 +98,17 @@ def initialize(root: Path, project: str, password=None, local=None):
     local = (local or root).resolve()
     state = local / ".webcontroller"
     settings_path = state / "settings.json"
-    settings = {"root": str(root), "project": project}
-    if settings_path.exists() and json.loads(settings_path.read_text(encoding="utf-8")) != settings:
-        raise DeploymentError("已初始化的部署目录或项目名不同，拒绝覆盖")
+    settings = {"root": str(root), "project": project, "mode": "compose"}
+    if settings_path.exists():
+        existing = json.loads(settings_path.read_text(encoding="utf-8"))
+        if existing.get("root") != str(root):
+            raise DeploymentError(
+                f"已初始化的部署目录不同：状态记录 {existing.get('root')!r}，当前 {str(root)!r}"
+            )
+        if existing.get("project", project) != project:
+            raise DeploymentError(
+                f"已初始化的 Compose 项目名不同：状态记录 {existing.get('project')!r}，当前 {project!r}"
+            )
     document = ComposeDocument(local, state)
     document.parse(document.source())
     credentials = state / "credentials.json"
@@ -110,6 +122,27 @@ def initialize(root: Path, project: str, password=None, local=None):
         directory.mkdir(exist_ok=True, mode=0o700)
         directory.chmod(0o700)
     return document
+
+
+def adopt_mode(root: Path, mode: str, local=None):
+    """Adopt the startup mode when the deploy root matches, keeping credentials and backups."""
+    root = root.resolve()
+    local = (local or root).resolve()
+    path = local / ".webcontroller" / "settings.json"
+    settings = json.loads(path.read_text(encoding="utf-8"))
+    if settings.get("root") != str(root):
+        raise DeploymentError(
+            f"状态目录记录的部署目录为 {settings.get('root')!r}，与当前 {str(root)!r} 不同"
+        )
+    if settings.get("mode", "compose") == mode:
+        return
+    if mode == "compose":
+        settings["project"] = discover_project(root, None, local=local)
+        settings["mode"] = "compose"
+    else:
+        settings.pop("project", None)
+        settings["mode"] = "source"
+    atomic_write(path, json.dumps(settings))
 
 
 def print_initial_password(local: Path):

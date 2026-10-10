@@ -12,7 +12,12 @@ from web.deployment.__main__ import main
 from web.deployment.auth import Authentication
 from web.deployment.config import DeploymentError
 from web.deployment.runner import ComposeRunner, discover_deployment
-from web.deployment.setup import discover_project, initialize, initialize_source
+from web.deployment.setup import (
+    adopt_mode,
+    discover_project,
+    initialize,
+    initialize_source,
+)
 from web.deployment.toml_config import CONFIG_NAMES
 
 
@@ -29,7 +34,11 @@ def test_initialization_preserves_existing_files_and_credentials(tmp_path):
     settings = json.loads(
         (tmp_path / ".webcontroller" / "settings.json").read_text(encoding="utf-8")
     )
-    assert settings == {"root": str(tmp_path.resolve()), "project": "existing-project"}
+    assert settings == {
+        "root": str(tmp_path.resolve()),
+        "project": "existing-project",
+        "mode": "compose",
+    }
     with pytest.raises(DeploymentError):
         initialize(tmp_path, "different-project")
 
@@ -112,6 +121,37 @@ def test_compose_init_generates_initial_password(tmp_path):
     assert len(initial.read_text(encoding="utf-8").strip()) >= 12
 
 
+def test_adopt_mode_migrates_identity(tmp_path, monkeypatch):
+    configs = tmp_path / "configs"
+    configs.mkdir()
+    for name in CONFIG_NAMES:
+        (configs / f"{name}.template").write_text("", encoding="utf-8")
+    (tmp_path / "compose.yaml").write_text(SOURCE, encoding="utf-8")
+    initialize_source(tmp_path, "test-password")
+    credentials = (tmp_path / ".webcontroller" / "credentials.json").read_bytes()
+    monkeypatch.setattr(
+        "web.deployment.setup.subprocess.run",
+        lambda *args, **kwargs: SimpleNamespace(stdout=f"proj\t{tmp_path}\n"),
+    )
+    adopt_mode(tmp_path, "compose", local=tmp_path)
+    settings = json.loads(
+        (tmp_path / ".webcontroller" / "settings.json").read_text(encoding="utf-8")
+    )
+    assert settings == {
+        "root": str(tmp_path.resolve()),
+        "project": "proj",
+        "mode": "compose",
+    }
+    assert (tmp_path / ".webcontroller" / "credentials.json").read_bytes() == credentials
+    adopt_mode(tmp_path, "source", local=tmp_path)
+    settings = json.loads(
+        (tmp_path / ".webcontroller" / "settings.json").read_text(encoding="utf-8")
+    )
+    assert settings == {"root": str(tmp_path.resolve()), "mode": "source"}
+    with pytest.raises(DeploymentError):
+        adopt_mode(tmp_path.parent / "elsewhere", "source", local=tmp_path)
+
+
 def test_compose_init_records_host_root_with_local_state(tmp_path):
     host = tmp_path / "host"
     deploy = tmp_path / "deploy"
@@ -120,7 +160,11 @@ def test_compose_init_records_host_root_with_local_state(tmp_path):
         (directory / "compose.yaml").write_text(SOURCE, encoding="utf-8")
     initialize(host, "split-project", "test-password", local=deploy)
     settings = json.loads((deploy / ".webcontroller" / "settings.json").read_text(encoding="utf-8"))
-    assert settings == {"root": str(host.resolve()), "project": "split-project"}
+    assert settings == {
+        "root": str(host.resolve()),
+        "project": "split-project",
+        "mode": "compose",
+    }
     assert not (host / ".webcontroller").exists()
 
 

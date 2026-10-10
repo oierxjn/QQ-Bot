@@ -70,8 +70,15 @@ def test_mode_conflict(source_root):
     settings.write_text(
         json.dumps({"root": str(source_root.resolve()), "project": "test"}), encoding="utf-8"
     )
+    credentials = (source_root / ".webcontroller/credentials.json").read_bytes()
+    initialize_source(source_root)
+    assert json.loads(settings.read_text(encoding="utf-8")) == {
+        "root": str(source_root.resolve()),
+        "mode": "source",
+    }
+    assert (source_root / ".webcontroller/credentials.json").read_bytes() == credentials
     with pytest.raises(DeploymentError):
-        initialize_source(source_root)
+        initialize_source(source_root.parent / "elsewhere")
 
 
 def test_source_cli_serves_without_compose(source_root):

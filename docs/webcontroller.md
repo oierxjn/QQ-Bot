@@ -13,7 +13,7 @@ uv run -m web.deployment --mode source
 
 首次运行自动初始化并启动服务；也可先执行 `uv run -m web.deployment --mode source --init` 只初始化不启动。
 
-初始化自动生成随机管理员密码，写入 `.webcontroller/initial-password`（仅当前用户可读），终端只提示文件路径，不显示密码内容；首次成功登录后面板自动删除该文件，请尽快用 `--reset-password` 设置自己的密码。也可在 `--init` 或 `--reset-password` 时用 `--password` 非交互指定密码，此时不生成密码文件。密码长度不限制，仅以 scrypt 哈希存储，强度由使用者自行负责。初始化从 `configs/*.toml.template` 补齐五类缺失配置，不覆盖已有文件；重复执行保留密码。设置与密码哈希存放于 `.webcontroller/`，不写入 `.env`。源码与 Compose 模式不能混用同一个已初始化的状态目录。
+初始化自动生成随机管理员密码，写入 `.webcontroller/initial-password`（仅当前用户可读），终端只提示文件路径，不显示密码内容；首次成功登录后面板自动删除该文件，请尽快用 `--reset-password` 设置自己的密码。也可在 `--init` 或 `--reset-password` 时用 `--password` 非交互指定密码，此时不生成密码文件。密码长度不限制，仅以 scrypt 哈希存储，强度由使用者自行负责。初始化从 `configs/*.toml.template` 补齐五类缺失配置，不覆盖已有文件；重复执行保留密码。设置与密码哈希存放于 `.webcontroller/`，不写入 `.env`。同一目录可随时在两种模式间切换：启动时会自动把状态目录的模式记录改写为当前模式，密码和备份保留；只有部署目录或 Compose 项目名与状态记录不同才拒绝。建议同一时间只保留一个面板实例，两侧同时编辑同一批配置时由版本检查兜底。
 
 默认监听 `127.0.0.1:7001`，可使用 `--port 7002` 指定其他端口。可用 `--bg` 以后台进程运行（`--mode source --bg`），PID 与日志分别记录在 `.webcontroller/panel.pid`、`panel.log`，用 `--mode source --stop` 停止；长期运行仍建议使用下文的 systemd 服务。远程访问使用下文的 SSH 转发。旧 Bot 配置中的 `web_controller_address` 不控制独立面板，仍保留以兼容 Bot 配置加载。
 
