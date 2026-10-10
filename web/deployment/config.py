@@ -14,7 +14,16 @@ from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
 MAX_SOURCE = 1024 * 1024
-FORM_FIELDS = {"image", "environment", "ports", "volumes", "restart", "depends_on", "healthcheck"}
+FORM_FIELDS = {
+    "image",
+    "restart",
+    "environment",
+    "ports",
+    "volumes",
+    "depends_on",
+    "healthcheck",
+    "profiles",
+}
 
 
 class DeploymentError(Exception):
@@ -151,6 +160,7 @@ class ComposeDocument:
                 "links": list,
                 "healthcheck": dict,
                 "networks": (list, dict),
+                "profiles": (list, str),
             }
             for key, expected in field_types.items():
                 if service.get(key) is not None and not isinstance(service[key], expected):

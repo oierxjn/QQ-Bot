@@ -105,7 +105,7 @@ docker compose run --rm --no-deps webcontroller python -m web.deployment --init 
 4. 点击“校验并保存”，检查差异后确认。保存备份后原子替换文件，不会立即更新容器。若文件已被其他操作修改，返回冲突并保留草稿；可下载草稿后重新读取比较。
 5. 点击“应用已保存配置”。面板执行固定项目的 `docker compose up -d --wait --wait-timeout 120`，只选择默认 profile 的非面板服务。可关闭页面，再次登录查看任务。
 
-第一版只应用没有 profiles 的服务，不使用 `.env` 中的 `COMPOSE_PROFILES`。有 profile 的服务在宿主机显式启动。镜像按 Compose 默认策略拉取，不强制更新所有 latest 镜像；修改镜像版本可明确触发升级。
+需要长期停用某个服务时，为它设置 profiles（服务表单或完整 YAML），应用会跳过该服务；仅手动 stop 的服务会在下次应用时被重新启动。第一版只应用没有 profiles 的服务，不使用 `.env` 中的 `COMPOSE_PROFILES`。有 profile 的服务在宿主机显式启动。镜像按 Compose 默认策略拉取，不强制更新所有 latest 镜像；修改镜像版本可明确触发升级。
 
 应用不执行 `down`、卷删除或 `--remove-orphans`。删除服务配置后，旧容器仍可能存在，需在宿主机确认后处理。变更端口、挂载或环境变量通常需要重建容器，仅执行 `restart` 不会应用这些变化。
 

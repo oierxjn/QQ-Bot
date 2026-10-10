@@ -48,6 +48,10 @@ async def test_real_compose_relative_bind_env_and_recreation(tmp_path):
       interval: 1s
       timeout: 1s
       retries: 3
+  sidecar:
+    image: alpine:3.21
+    command: [sleep, '300']
+    profiles: [extra]
 volumes:
   store:
 """
@@ -82,11 +86,13 @@ volumes:
         output = []
         await runner.apply(source, output.append)
         worker_id = command("ps", "-q", "worker")
+        assert not command("ps", "-q", "sidecar"), "profiled service must not be started by apply"
         updated = source.replace("REVISION: '1'", "REVISION: '2'")
         document.save(updated, document.read()["version"])
         statuses = await runner.apply(updated, output.append)
         assert command("ps", "-q", "worker") != worker_id
         assert command("ps", "-q", "webcontroller") == panel_id
+        assert all(status["Service"] != "sidecar" for status in statuses)
         assert any(
             status["Service"] == "worker" and status["Health"] == "healthy" for status in statuses
         )

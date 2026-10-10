@@ -3,8 +3,9 @@ const $ = (id) => document.getElementById(id);
 let csrf = "", version = "", baseline = "", services = {}, selected = "", panel = "webcontroller";
 let formOriginal = {}, view = "form", polling = null, taskRunning = false, pending = false;
 let savedState = "已保存，待应用";
-const labels = {image: "镜像", restart: "重启策略", environment: "环境变量", ports: "端口映射", volumes: "挂载", depends_on: "依赖关系", healthcheck: "健康检查"};
-const structured = new Set(["environment", "ports", "volumes", "depends_on", "healthcheck"]);
+const labels = {image: "镜像", restart: "重启策略", environment: "环境变量", ports: "端口映射", volumes: "挂载", depends_on: "依赖关系", healthcheck: "健康检查", profiles: "Profiles"};
+const structured = new Set(["environment", "ports", "volumes", "depends_on", "healthcheck", "profiles"]);
+function applyTargets() { return Object.keys(services).filter((name) => name !== panel && !(services[name]?.profiles?.length)); }
 function notice(text, error = false) { $("notice").textContent = text; $("notice").classList.toggle("error", error); }
 async function api(path, method = "GET", body) {
   const response = await fetch(path, {method, headers: {"Content-Type": "application/json", "X-CSRF-Token": csrf}, body: body === undefined ? undefined : JSON.stringify(body)});
@@ -136,7 +137,10 @@ async function refreshStatus() {
     for (const service of data.services) {
       const row = document.createElement("div"); row.className = "status-row";
       const name = document.createElement("span"); name.textContent = service.Service || service.Name;
-      const status = document.createElement("span"); status.textContent = [service.State, service.Health || "未配置健康检查"].join(" · ");
+      let hint = "";
+      if (!applyTargets().includes(service.Service)) hint = " · 应用跳过（profile）";
+      else if (service.State && service.State !== "running") hint = " · 应用时将启动";
+      const status = document.createElement("span"); status.textContent = [service.State, service.Health || "未配置健康检查"].join(" · ") + hint;
       row.append(name, status); $("service-status").append(row);
     }
   } catch (error) { $("service-status").textContent = error.message; }
@@ -175,8 +179,10 @@ $("save").addEventListener("click", () => action(async () => {
 }));
 $("apply").addEventListener("click", () => action(async () => {
   if (dirty()) throw new Error("请先保存草稿。");
+  const targets = applyTargets();
+  if (!targets.length) throw new Error("没有可应用的默认 profile 服务。");
   const originalVersion = version;
-  confirmAction("应用已保存的配置", "将重建有变更的业务容器，可能暂时中断 Bot。仅应用默认 profile 服务，不更新面板、不清理旧服务或删除卷。", "", async () => { trackTask(await api("/api/compose/apply", "POST", {version: originalVersion})); notice("应用任务已启动，可以关闭页面后重新查看。"); });
+  confirmAction("应用已保存的配置", "将应用：" + targets.join("、") + "。已停止的目标服务会被重新启动；不更新面板、不清理旧服务或删除卷。", "", async () => { trackTask(await api("/api/compose/apply", "POST", {version: originalVersion})); notice("应用任务已启动，可以关闭页面后重新查看。"); });
 }));
 $("reload").addEventListener("click", () => action(async () => {
   if (dirty()) confirmAction("重新读取配置", "当前草稿将被替换，可先下载草稿。", "", load);
