@@ -90,7 +90,8 @@ async def serve_panel(root, mode, port, stop):
     except asyncio.CancelledError:
         raise
     except Exception as exc:
-        _notify(f"WebController 面板异常退出，Bot 不受影响：{exc}")
+        kind = type(exc).__name__
+        _notify(f"WebController 面板异常退出，Bot 不受影响（{kind}）：{exc}")
         return
     stop.set()
 
