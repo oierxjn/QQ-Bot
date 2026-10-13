@@ -232,6 +232,45 @@ async def test_supervise_bot_terminates_child_on_stop(tmp_path):
     await asyncio.wait_for(task, 10)
 
 
+@pytest.mark.asyncio
+async def test_supervise_bot_resets_backoff_after_stable_run(tmp_path):
+    import asyncio
+    import sys
+    import time
+
+    from web.deployment.runtime import supervise_bot
+
+    stop = asyncio.Event()
+    restarts = tmp_path / "restarts"
+    # First child exits immediately; the second sleeps long enough to count as
+    # stable (reset_after), so the next crash must restart at backoff_start.
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "import sys, time\n"
+            f"p = {str(restarts)!r}\n"
+            "open(p, 'a').write('x')\n"
+            "if len(open(p).read()) > 1:\n"
+            "    time.sleep(1)\n"
+            "sys.exit(1)\n"
+        ),
+    ]
+    task = asyncio.create_task(
+        supervise_bot(stop, command, tmp_path, backoff_start=0.05, backoff_cap=5.0, reset_after=0.5)
+    )
+    try:
+        deadline = time.monotonic() + 20
+        while True:
+            if restarts.is_file() and len(restarts.read_text(encoding="utf-8")) >= 3:
+                break
+            assert time.monotonic() < deadline, "supervisor did not restart after stable run"
+            await asyncio.sleep(0.05)
+    finally:
+        stop.set()
+        await asyncio.wait_for(task, 10)
+
+
 def test_detect_runtime_uses_deploy_mount(tmp_path, monkeypatch):
     from web.deployment import runtime
 

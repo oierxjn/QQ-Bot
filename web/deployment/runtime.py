@@ -96,10 +96,15 @@ async def serve_panel(root, mode, port, stop):
     stop.set()
 
 
-async def supervise_bot(stop, command, cwd, backoff_start=1.0, backoff_cap=30.0):
-    """Run the Bot as a child process and restart it with backoff until `stop`."""
+async def supervise_bot(stop, command, cwd, backoff_start=1.0, backoff_cap=30.0, reset_after=60.0):
+    """Run the Bot as a child process and restart it with exponential backoff.
+
+    A child that stayed up for `reset_after` seconds counts as stable and the
+    next crash restarts at `backoff_start` again.
+    """
     backoff = backoff_start
     while not stop.is_set():
+        started = asyncio.get_running_loop().time()
         try:
             process = await asyncio.create_subprocess_exec(*command, cwd=cwd)
         except OSError as exc:
@@ -120,6 +125,8 @@ async def supervise_bot(stop, command, cwd, backoff_start=1.0, backoff_cap=30.0)
         code = await waiter
         if stop.is_set():
             return
+        if asyncio.get_running_loop().time() - started >= reset_after:
+            backoff = backoff_start
         _notify(f"Bot 进程退出（exit {code}），{backoff:g} 秒后重启")
         try:
             await asyncio.wait_for(stop.wait(), timeout=backoff)
