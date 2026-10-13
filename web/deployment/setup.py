@@ -3,7 +3,6 @@
 import json
 import os
 import re
-import subprocess
 from pathlib import Path
 
 from .auth import create_credentials, generate_password
@@ -45,38 +44,17 @@ def initialize_source(root: Path, password=None):
     return store
 
 
-def discover_project(root: Path, explicit=None, local=None):
-    base = (local or root).resolve()
-    result = subprocess.run(
-        [
-            "docker",
-            "ps",
-            "-a",
-            "--format",
-            '{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.project.working_dir"}}',
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    projects = set()
-    for line in result.stdout.splitlines():
-        project, _, directory = line.partition("\t")
-        if project and directory and Path(directory).resolve() == root.resolve():
-            projects.add(project)
-    if len(projects) > 1 and not explicit:
-        raise DeploymentError("目录对应多个 Compose 项目，请使用 --project-name 明确指定")
+def discover_project(root: Path, explicit=None):
+    """Derive the Compose project name from compose.yaml, .env, or the directory name."""
+    root = root.resolve()
     if explicit:
-        if projects and explicit not in projects:
-            raise DeploymentError("指定项目名与此目录已有容器不一致")
         project = explicit
-    elif projects:
-        project = next(iter(projects))
     else:
-        name = plain(
-            ComposeDocument.decode((base / "compose.yaml").read_text(encoding="utf-8"))
-        ).get("name")
-        env_path = base / ".env"
+        compose_path = root / "compose.yaml"
+        if not compose_path.is_file():
+            raise DeploymentError(f"部署目录缺少 compose.yaml：{root}")
+        name = plain(ComposeDocument.decode(compose_path.read_text(encoding="utf-8"))).get("name")
+        env_path = root / ".env"
         if env_path.is_file():
             match = re.search(
                 r"^\s*(?:export\s+)?COMPOSE_PROJECT_NAME\s*=\s*(.*?)\s*$",
@@ -93,10 +71,9 @@ def discover_project(root: Path, explicit=None, local=None):
     return project
 
 
-def initialize(root: Path, project: str, password=None, local=None):
+def initialize(root: Path, project: str, password=None):
     root = root.resolve()
-    local = (local or root).resolve()
-    state = local / ".webcontroller"
+    state = root / ".webcontroller"
     settings_path = state / "settings.json"
     settings = {"root": str(root), "project": project, "mode": "compose"}
     if settings_path.exists():
@@ -109,7 +86,7 @@ def initialize(root: Path, project: str, password=None, local=None):
             raise DeploymentError(
                 f"已初始化的 Compose 项目名不同：状态记录 {existing.get('project')!r}，当前 {project!r}"
             )
-    document = ComposeDocument(local, state)
+    document = ComposeDocument(root, state)
     document.parse(document.source())
     credentials = state / "credentials.json"
     if not credentials.exists():
@@ -118,17 +95,18 @@ def initialize(root: Path, project: str, password=None, local=None):
             atomic_write(state / "initial-password", password + "\n")
         atomic_write(credentials, json.dumps(create_credentials(password)))
     atomic_write(settings_path, json.dumps(settings))
-    for directory in (state, state / "backups", state / "tasks"):
+    for directory in (state, state / "backups"):
         directory.mkdir(exist_ok=True, mode=0o700)
         directory.chmod(0o700)
     return document
 
 
-def adopt_mode(root: Path, mode: str, local=None):
+def adopt_mode(root: Path, mode: str):
     """Adopt the startup mode when the deploy root matches, keeping credentials and backups."""
     root = root.resolve()
-    local = (local or root).resolve()
-    path = local / ".webcontroller" / "settings.json"
+    path = root / ".webcontroller" / "settings.json"
+    if not path.is_file():
+        raise DeploymentError("面板尚未初始化，状态目录缺少 settings.json")
     settings = json.loads(path.read_text(encoding="utf-8"))
     if settings.get("root") != str(root):
         raise DeploymentError(
@@ -137,7 +115,7 @@ def adopt_mode(root: Path, mode: str, local=None):
     if settings.get("mode", "compose") == mode:
         return
     if mode == "compose":
-        settings["project"] = discover_project(root, None, local=local)
+        settings["project"] = discover_project(root)
         settings["mode"] = "compose"
     else:
         settings.pop("project", None)
@@ -145,8 +123,8 @@ def adopt_mode(root: Path, mode: str, local=None):
     atomic_write(path, json.dumps(settings))
 
 
-def print_initial_password(local: Path):
-    initial = local / ".webcontroller" / "initial-password"
+def print_initial_password(root: Path):
+    initial = root / ".webcontroller" / "initial-password"
     if initial.exists():
         print(f"初始管理员密码已生成：{initial}")
         print("首次成功登录后面板会删除该文件；请尽快用 --reset-password 修改密码。")

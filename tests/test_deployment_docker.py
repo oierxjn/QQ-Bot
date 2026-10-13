@@ -13,7 +13,6 @@ import pytest
 
 from web.deployment.config import ComposeDocument, yaml_parser
 from web.deployment.runner import ComposeRunner
-from web.deployment.setup import initialize
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("RUN_WEB_DOCKER_TESTS") != "1"
@@ -57,7 +56,7 @@ volumes:
 """
     (tmp_path / "compose.yaml").write_text(source, encoding="utf-8")
     document = ComposeDocument(tmp_path, tmp_path / ".webcontroller")
-    runner = ComposeRunner(tmp_path, project, verify_container=False)
+    runner = ComposeRunner(tmp_path, project)
     prefix = [
         "docker",
         "compose",
@@ -100,7 +99,7 @@ async def test_actual_panel_container_login_and_config_save(tmp_path):
             "webcontroller": {
                 "image": image,
                 "ports": ["127.0.0.1::7001"],
-                "volumes": [f"{tmp_path}:/deploy", "/var/run/docker.sock:/var/run/docker.sock"],
+                "volumes": [f"{tmp_path}:/deploy"],
             },
             "worker": {
                 "image": "alpine:3.21",
@@ -112,7 +111,6 @@ async def test_actual_panel_container_login_and_config_save(tmp_path):
     output = io.StringIO()
     yaml_parser().dump(config, output)
     (tmp_path / "compose.yaml").write_text(output.getvalue(), encoding="utf-8")
-    initialize(tmp_path, project, "test-password")
     prefix = [
         "docker",
         "compose",
@@ -132,17 +130,27 @@ async def test_actual_panel_container_login_and_config_save(tmp_path):
     try:
         command("up", "-d", "webcontroller")
         address = command("port", "webcontroller", "7001")
+        # Without the panel image published, first boot may need a local build;
+        # serving auto-initializes and writes the bootstrap password into /deploy.
+        settings = tmp_path / ".webcontroller" / "settings.json"
+        initial = tmp_path / ".webcontroller" / "initial-password"
         async with httpx.AsyncClient(base_url="http://" + address, timeout=90) as client:
-            for _attempt in range(100):
-                try:
-                    response = await client.post("/api/login", json={"password": "test-password"})
-                    if response.status_code == 200:
-                        break
-                except httpx.TransportError:
-                    pass
-                await asyncio.sleep(0.2)
+            response = None
+            for _attempt in range(200):
+                if settings.is_file() and initial.is_file():
+                    try:
+                        response = await client.post(
+                            "/api/login",
+                            json={"password": initial.read_text(encoding="utf-8").strip()},
+                        )
+                        if response.status_code == 200:
+                            break
+                    except httpx.TransportError:
+                        pass
+                await asyncio.sleep(0.25)
             else:
                 raise AssertionError("Panel container did not become ready")
+            assert not initial.exists(), "initial password must be removed after login"
             client.headers["X-CSRF-Token"] = response.json()["csrf"]
             document_payload = (await client.get("/api/compose")).json()
             draft = (

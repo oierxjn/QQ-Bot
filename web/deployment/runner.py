@@ -2,35 +2,10 @@ import asyncio
 import json
 import os
 import re
-import subprocess
 import tempfile
 from pathlib import Path
 
 from .config import ComposeDocument, DeploymentError, plain
-
-
-def discover_deployment(local: Path) -> Path:
-    """Derive the host deploy directory from this container's own mount table."""
-    hostname = os.environ.get("HOSTNAME", "")
-    if not re.fullmatch(r"[a-f0-9]{12,64}", hostname):
-        raise DeploymentError(
-            "面板需由 Compose 服务启动，或在宿主机用 --root 显式指定部署目录", 503
-        )
-    result = subprocess.run(
-        ["docker", "inspect", hostname, "--format", "{{json .Mounts}}"],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode:
-        raise DeploymentError("无法访问 Docker socket，请检查面板容器的 socket 挂载", 503)
-    for mount in json.loads(result.stdout):
-        if (
-            mount.get("Type") == "bind"
-            and Path(mount.get("Destination", "")) == local
-            and mount.get("RW")
-        ):
-            return Path(mount["Source"])
-    raise DeploymentError(f"部署目录必须以读写方式挂载到容器的 {local}", 503)
 
 
 def sensitive_values(value, values, sensitive=False):
@@ -54,36 +29,29 @@ def sensitive_values(value, values, sensitive=False):
 
 
 class ComposeRunner:
-    """Docker subprocess boundary. No request can supply arbitrary CLI arguments."""
+    """Docker subprocess boundary. No request can supply arbitrary CLI arguments.
 
-    def __init__(
-        self,
-        project_dir: Path,
-        project: str,
-        panel_service="webcontroller",
-        verify_container=True,
-        local_dir=None,
-    ):
+    Only client-side Compose operations are used (``config``); the panel never
+    touches the Docker daemon, so no socket access is required.
+    """
+
+    def __init__(self, root: Path, project: str, panel_service="webcontroller"):
         if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", project):
             raise DeploymentError("无效的 Compose 项目名称")
-        # project_dir is the host path handed to --project-directory so the daemon resolves
-        # bind sources correctly; local is where this process can actually read the files.
-        self.project_dir = Path(project_dir).resolve()
-        self.local = Path(local_dir or project_dir).resolve()
+        self.root = Path(root).resolve()
         self.project = project
         self.panel_service = panel_service
-        self.verify_container = verify_container
         self.prefix = [
             "docker",
             "compose",
             "--ansi",
             "never",
             "--project-directory",
-            str(self.project_dir),
+            str(self.root),
             "-p",
             project,
         ]
-        env_file = self.local / ".env"
+        env_file = self.root / ".env"
         if env_file.is_file():
             self.prefix += ["--env-file", str(env_file)]
         self.environment = {
@@ -97,7 +65,7 @@ class ComposeRunner:
         values = self.known_sensitive.copy()
         if source:
             sensitive_values(plain(ComposeDocument.decode(source)), values)
-        env_file = self.local / ".env"
+        env_file = self.root / ".env"
         if env_file.is_file():
             for line in env_file.read_text(encoding="utf-8").splitlines():
                 if "=" in line and not line.lstrip().startswith("#"):
@@ -123,14 +91,14 @@ class ComposeRunner:
         try:
             process = await asyncio.create_subprocess_exec(
                 *args,
-                cwd=self.local,
+                cwd=self.root,
                 env=self.environment,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
         except OSError:
             raise DeploymentError(
-                "无法启动 Docker CLI，请检查面板镜像和 Docker socket", 503
+                "无法启动 Docker CLI，请检查运行环境是否安装 Docker CLI", 503
             ) from None
         chunks = {"stdout": bytearray(), "stderr": bytearray()}
 
@@ -162,32 +130,9 @@ class ComposeRunner:
             )
         return stdout
 
-    async def identity(self):
-        if not self.verify_container:
-            return
-        hostname = os.environ.get("HOSTNAME", "")
-        if not re.fullmatch(r"[a-f0-9]{12,64}", hostname):
-            raise DeploymentError("面板必须在默认主机名的独立容器内运行", 503)
-        result = json.loads(await self.execute(["docker", "inspect", hostname]))[0]
-        labels = result.get("Config", {}).get("Labels", {})
-        if (
-            labels.get("com.docker.compose.project") != self.project
-            or labels.get("com.docker.compose.service") != self.panel_service
-        ):
-            raise DeploymentError("面板容器的 Compose 项目身份与配置不一致", 503)
-        if not any(
-            mount.get("Type") == "bind"
-            and mount.get("Source") == str(self.project_dir)
-            and mount.get("Destination") == str(self.local)
-            and mount.get("RW")
-            for mount in result.get("Mounts", [])
-        ):
-            raise DeploymentError("部署目录必须以读写方式挂载到面板容器的 /deploy", 503)
-
     async def validate(self, source):
-        await self.identity()
         descriptor, temporary = tempfile.mkstemp(
-            prefix=".compose-check-", suffix=".yaml", dir=self.local
+            prefix=".compose-check-", suffix=".yaml", dir=self.root
         )
         try:
             with os.fdopen(descriptor, "w", encoding="utf-8") as output:
@@ -212,29 +157,12 @@ class ComposeRunner:
                     raise DeploymentError("业务服务不能依赖面板服务")
                 for mount in service.get("volumes", []):
                     if mount.get("type") == "bind":
-                        host_path = Path(mount["source"]).resolve()
-                        # config --quiet cannot verify host resources; binds under the deploy
-                        # directory must exist to avoid silently creating empty directories.
-                        # The host path itself is not visible inside the panel container, so
-                        # existence is checked through the mounted view.
-                        if host_path.is_relative_to(self.project_dir):
-                            relative = host_path.relative_to(self.project_dir)
-                            if not (self.local / relative).exists():
-                                raise DeploymentError(f"挂载源路径不存在：{host_path}")
+                        path = Path(mount["source"]).resolve()
+                        # config cannot verify bind sources; paths under the deploy
+                        # directory must exist to avoid silently creating empty
+                        # directories. Sources outside it are not visible here.
+                        if path.is_relative_to(self.root) and not path.exists():
+                            raise DeploymentError(f"挂载源路径不存在：{path}")
             return result
         finally:
             Path(temporary).unlink(missing_ok=True)
-
-    async def status(self):
-        await self.identity()
-        output = await self.execute(
-            self.prefix
-            + ["-f", str(self.local / "compose.yaml"), "ps", "--all", "--format", "json"]
-        )
-        try:
-            value = json.loads(output or "[]")
-            statuses = value if isinstance(value, list) else [value]
-        except json.JSONDecodeError:
-            statuses = [json.loads(line) for line in output.splitlines() if line.strip()]
-        keys = {"Service", "Name", "State", "Health", "ExitCode"}
-        return [{key: value for key, value in status.items() if key in keys} for status in statuses]

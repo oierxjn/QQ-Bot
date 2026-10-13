@@ -21,9 +21,6 @@ class FakeRunner:
             raise DeploymentError("Compose 校验失败")
         return {"services": {"db": {"image": "postgres:18"}, "webcontroller": {"image": "panel:1"}}}
 
-    async def status(self):
-        return []
-
 
 @pytest.fixture
 def panel(tmp_path):
@@ -113,7 +110,7 @@ def test_limiter_blocks_repeated_failed_logins(panel):
 async def test_runner_uses_fixed_project_context_and_env_file(tmp_path):
     (tmp_path / "compose.yaml").write_text(SOURCE, encoding="utf-8")
     (tmp_path / ".env").write_text("DB_PASSWORD=private-value\n", encoding="utf-8")
-    runner = ComposeRunner(tmp_path, "original-project", verify_container=False)
+    runner = ComposeRunner(tmp_path, "original-project")
     commands = []
 
     async def execute(args, source="", timeout=60):
@@ -141,7 +138,7 @@ def test_unknown_host_and_large_chunked_body_are_rejected(panel):
 
 @pytest.mark.asyncio
 async def test_resolved_env_file_values_are_filtered_from_logs(tmp_path):
-    runner = ComposeRunner(tmp_path, "test-project", verify_container=False)
+    runner = ComposeRunner(tmp_path, "test-project")
 
     async def execute(args, source="", timeout=60):
         return json.dumps(

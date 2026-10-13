@@ -92,7 +92,7 @@ async function load() {
   await initializeConfigs(capabilities);
   if (!capabilities.compose) return;
   setDocument(await api("/api/compose"));
-  await refreshBackups(); await refreshStatus();
+  await refreshBackups();
 }
 function confirmAction(title, message, diff, callback) {
   $("confirm-title").textContent = title; $("confirm-message").textContent = message;
@@ -124,18 +124,6 @@ async function refreshBackups() {
     })); row.append(label, button); $("backups").append(row);
   }
 }
-async function refreshStatus() {
-  try {
-    const data = await api("/api/services"); $("service-status").replaceChildren();
-    if (!data.services.length) $("service-status").textContent = "当前项目没有容器。";
-    for (const service of data.services) {
-      const row = document.createElement("div"); row.className = "status-row";
-      const name = document.createElement("span"); name.textContent = service.Service || service.Name;
-      const status = document.createElement("span"); status.textContent = [service.State, service.Health || "未配置健康检查"].join(" · ");
-      row.append(name, status); $("service-status").append(row);
-    }
-  } catch (error) { $("service-status").textContent = error.message; }
-}
 $("login-form").addEventListener("submit", (event) => { event.preventDefault(); action(async () => {
   const data = await api("/api/login", "POST", {password: $("password").value}); csrf = data.csrf; $("password").value = "";
   $("login-panel").hidden = true; $("workspace").hidden = false; $("logout").hidden = false;
@@ -162,7 +150,6 @@ $("download").addEventListener("click", () => action(async () => {
   const link = document.createElement("a"); link.href = url; link.download = "compose.yaml"; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }));
 $("refresh-backups").addEventListener("click", () => action(refreshBackups));
-$("refresh-status").addEventListener("click", () => action(refreshStatus));
 $("confirm-cancel").addEventListener("click", () => $("confirm-dialog").close());
 window.addEventListener("beforeunload", (event) => { if ((dirty() || configDirty()) && csrf) { event.preventDefault(); event.returnValue = ""; } });
 (async () => {

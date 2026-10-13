@@ -7,7 +7,6 @@ services:
             - type: bind
               source: .
               target: /deploy
-            - /var/run/docker.sock:/var/run/docker.sock
         restart: unless-stopped
 
     db:

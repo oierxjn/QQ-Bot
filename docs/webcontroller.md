@@ -1,6 +1,6 @@
 # 独立部署面板
 
-面板独立于 Bot 启动，QQ 未登录、Bot 配置错误或 Bot 停止时仍可使用。源码和 Docker 模式均提供 TOML 配置管理、校验、差异及备份恢复；Docker 模式另外提供 Compose 表单/YAML 编辑和容器状态。
+面板独立于 Bot 启动，QQ 未登录、Bot 配置错误或 Bot 停止时仍可使用。源码和 Docker 模式均提供 TOML 配置管理、校验、差异及备份恢复；Docker 模式另外提供 Compose 表单/YAML 编辑。面板不挂载 Docker socket，对 Docker daemon 零访问：不显示容器运行状态，也不执行任何容器操作。
 
 ## 纯源码部署（Windows / Linux）
 
@@ -67,7 +67,7 @@ Bot 基础配置提供表单，密码和令牌默认遮蔽；插件提供全局�
 docker compose up -d
 ```
 
-面板服务随 compose 启动并在容器内自动初始化（识别已有容器标签确定 Compose 项目名），初始面板密码自动生成，存于 `.webcontroller/initial-password`，首次成功登录后自动删除；与 LLBot WebUI 密码独立。面板把部署目录以 `source: .` 挂载到容器内固定路径 `/deploy`，启动时通过 Docker socket 反查宿主机路径，`compose.yaml` 不需要任何部署目录变量。
+面板服务随 compose 启动并在容器内自动初始化（从 `compose.yaml`、`.env` 或目录名推断 Compose 项目名），初始面板密码自动生成，存于 `.webcontroller/initial-password`，首次成功登录后自动删除；与 LLBot WebUI 密码独立。面板把部署目录以 `source: .` 挂载到容器内固定路径 `/deploy`，不需要 Docker socket，`compose.yaml` 不需要任何部署目录变量。
 
 访问 `http://127.0.0.1:7001`。远程服务器使用 SSH 转发：
 
@@ -77,31 +77,31 @@ ssh -L 7001:127.0.0.1:7001 user@server
 
 再打开本机的 `http://127.0.0.1:7001`。第一版仅接受 localhost/回环地址的 Host，不支持公网反向代理或局域网直接访问。面板的 Compose 端口只绑定宿主机回环地址。
 
-**Docker socket 权限接近宿主机管理员。** 仅供可信管理员使用；不要将端口绑定到公网。面板没有公开注册入口。
+**面板对 Docker daemon 零访问。** 校验只执行 `docker compose config` 等客户端操作，不读取容器状态、不启停容器；容器更新和状态查询都在宿主机执行。仍不要将端口绑定到公网，面板没有公开注册入口。
 
 ## 已有部署升级
 
-不要重新执行 `docker_compose_init.sh`，它用于首次初始化。保留当前 `compose.yaml` 与配置，在 Compose 的 services 中加入新版提供的 `webcontroller` 服务块（`source: .` 挂载到 `/deploy` 加 docker socket，无环境变量），然后执行：
+不要重新执行 `docker_compose_init.sh`，它用于首次初始化。保留当前 `compose.yaml` 与配置，在 Compose 的 services 中加入新版提供的 `webcontroller` 服务块（`source: .` 挂载到 `/deploy`，无环境变量，不需要 Docker socket），然后执行：
 
 ```bash
 docker compose up -d webcontroller
 ```
 
-面板容器首次启动时自动初始化，从已有容器标签识别原 Compose 项目名称。目录对应多个项目时，在宿主机明确指定：
+面板容器首次启动时自动初始化，从 `compose.yaml`、`.env` 或目录名推断原 Compose 项目名称；推断结果不符时在宿主机明确指定：
 
 ```bash
 docker compose run --rm --no-deps webcontroller python -m web.deployment --init --project-name existing-project
 ```
 
-`scripts/setup_webcontroller.sh` 保留为宿主机维护入口（重置密码、登记保护配置等），内部通过 `docker compose run` 执行同一命令。密码哈希、会话密钥、受保护配置、备份和任务保存在 `.webcontroller/`；文件权限为 0600、状态目录为 0700。这些文件不应提交到 Git 或打包进镜像。
+`scripts/setup_webcontroller.sh` 保留为宿主机维护入口（重置密码、登记保护配置等），内部通过 `docker compose run` 执行同一命令。密码哈希、会话密钥、受保护配置和备份保存在 `.webcontroller/`；文件权限为 0600、状态目录为 0700。这些文件不应提交到 Git 或打包进镜像。
 
-面板把部署目录挂载到容器内 `/deploy`，并通过 Docker API 反查宿主机真实路径用于 `--project-directory`，因此业务服务的相对 bind 挂载源仍按宿主机路径解析。绝对路径挂载源无法在容器内验证存在性，仅部署目录下的相对源做存在性校验。移动部署目录后需重新初始化面板身份。
+面板把部署目录挂载到容器内 `/deploy`，并以该路径作为 `--project-directory`。移动部署目录后状态记录中的路径不再匹配，需删除 `.webcontroller/settings.json` 重新初始化（密码和备份保留）。
 
 ## 编辑与应用
 
 1. 在服务表单编辑镜像、重启策略、环境变量、端口、挂载、依赖与健康检查。结构字段接受 JSON 列表/对象；留空删除字段。点击“更新草稿”或切换到完整 YAML，同步到同一份草稿。
 2. 完整 YAML 可以配置其他 Compose 字段和增加业务服务。第一版管理单个 `compose.yaml`，不支持 `include`、`extends` 或多个文件叠加。
-3. 点击“校验与差异”检查草稿。校验把部署目录的宿主机路径作为 `--project-directory`、部署目录内的 `.env`（如存在）作为 `--env-file` 传给 Compose，先执行 `docker compose config --quiet`，再检查规范化的依赖与挂载。部署目录内的相对 bind 源必须已存在，防止误挂载空目录；绝对路径挂载源无法在面板容器内验证，仅透传。
+3. 点击“校验与差异”检查草稿。校验把部署目录（容器内为 `/deploy`）作为 `--project-directory`、部署目录内的 `.env`（如存在）作为 `--env-file` 传给 Compose，先执行 `docker compose config --quiet`，再检查规范化的依赖与挂载。部署目录内的相对 bind 源必须已存在，防止误挂载空目录；绝对路径挂载源无法在面板容器内验证，仅透传。
 4. 点击“校验并保存”，检查差异后确认。保存备份后原子替换文件。若文件已被其他操作修改，返回冲突并保留草稿；可下载草稿后重新读取比较。
 5. 面板不执行任何容器操作。保存后需在宿主机执行 `docker compose up -d` 更新容器；变更端口、挂载或环境变量通常需要重建容器，仅 `restart` 不会应用这些变化。删除服务配置后，旧容器仍可能存在，需在宿主机确认后处理。
 
@@ -127,7 +127,7 @@ bash scripts/setup_webcontroller.sh --reset-password
 docker compose restart webcontroller
 ```
 
-会话 8 小时后过期，面板重启使旧会话失效；失败登录超过每分钟 5 次会暂时限速。恢复密码不会在终端输出密码。任务输出过滤 Compose 环境变量和 `.env` 中的值；完整 YAML、差异、下载与备份仍可能包含明文密码，仅对登录管理员开放。
+会话 8 小时后过期，面板重启使旧会话失效；失败登录超过每分钟 5 次会暂时限速。恢复密码不会在终端输出密码。校验命令的报错输出会过滤 Compose 环境变量和 `.env` 中的值；完整 YAML、差异、下载与备份仍可能包含明文密码，仅对登录管理员开放。
 
 ## 本地构建与验证
 
@@ -138,7 +138,7 @@ docker build -f Dockerfile.webcontroller -t heai/theresa-webcontroller:latest .
 docker compose up -d webcontroller
 ```
 
-面板容器首次启动时自动初始化；镜像版本变更直接修改 `compose.yaml` 中 webcontroller 服务的 `image` 字段。
+面板容器首次启动时自动初始化；镜像内置 Docker CLI 与 Compose 插件，仅用于客户端校验，容器不挂载 Docker socket。镜像版本变更直接修改 `compose.yaml` 中 webcontroller 服务的 `image` 字段。
 
 如果构建机器依赖 HTTP 代理，Docker 服务代理负责镜像拉取；BuildKit 的认证请求也可能由 Docker CLI 进程发起，需要同时给构建进程设置代理。构建阶段的 `uv sync` 则使用 build args。例如（将地址替换为构建机器可达的代理）：
 
@@ -165,8 +165,6 @@ RUN_WEB_DOCKER_TESTS=1 uv run pytest tests/test_deployment_docker.py
 
 如果测试进程本身也在 Linux 容器中运行，需要挂载 Docker socket、将测试目录以相同绝对路径挂载，并使用 `--network host`。集成测试通过宿主机回环地址访问面板的随机端口；默认 bridge 网络中的 `127.0.0.1` 指向测试容器自身。
 
-2026-10-06 已在 Ubuntu 24.04 x86_64 VM 上完成真实验证：Docker Engine 29.6.1，构建出的面板镜像使用 Python 3.13.16、Docker CLI 28.5.2、Compose 2.40.3。配置、API、初始化及 Docker 集成测试共 34 项通过，包含实际面板登录、保存、一键应用及业务容器重建；面板容器保持不变，测试容器和卷已清理。验证未启动 LLBot/PMHQ，也未测试真实 QQ 登录、消息或生产数据库。
+更早版本的验证记录（2026-10-06 前后）针对含一键应用、容器状态与 Docker socket 的设计，相关结论不再逐条适用。当前版本（移除 Docker socket 后）在 Windows 完成全量测试：配置、API、初始化、源码命令与真实 Chromium 共 222 项通过，4 项 Linux Docker 集成测试因本机缺少 Docker Engine 跳过。集成测试已改写为无 socket 场景（面板容器内自动初始化、登录、保存），需在 Linux/WSL 重新运行确认；VM 部署验证同样待重做。
 
-同日完成源码模式验证：Windows 全量测试及真实 Chromium 共 214 项通过，2 项真实 Docker 测试因本机缺少 Docker Engine 跳过；DevelopVM 临时 uv 虚拟环境中配置、API、初始化及独立命令启动共 49 项通过，1 项 Windows junction 测试按平台跳过。浏览器覆盖源码表单/TOML、无效草稿保留、保存恢复、群配置、文件切换及 Docker 共用 TOML 页。Linux 临时目录已清理，未启动 Bot、LLBot 或数据库；本轮未重新运行真实 Docker 集成测试。
-
-实现依据：[Compose up](https://docs.docker.com/reference/cli/docker/compose/up/)、[Compose config](https://docs.docker.com/reference/cli/docker/compose/config/)、[Profiles](https://docs.docker.com/compose/how-tos/profiles/)、[项目名称](https://docs.docker.com/compose/how-tos/project-name/)、[Docker socket 风险](https://docs.docker.com/engine/security/#docker-daemon-attack-surface)。
+实现依据：[Compose config](https://docs.docker.com/reference/cli/docker/compose/config/)、[Profiles](https://docs.docker.com/compose/how-tos/profiles/)、[项目名称](https://docs.docker.com/compose/how-tos/project-name/)。

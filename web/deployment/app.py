@@ -105,7 +105,7 @@ def create_app(document: ComposeDocument | None, runner, credentials, *, configs
                         raise DeploymentError("CSRF 校验失败，请重新登录", 403)
                     request.state.session = session
                 if document is None and request.url.path.startswith(
-                    ("/api/compose", "/api/backups", "/api/services", "/api/tasks")
+                    ("/api/compose", "/api/backups")
                 ):
                     raise DeploymentError("源码模式不提供 Compose 管理", 404)
             response = await call_next(request)
@@ -249,16 +249,5 @@ def create_app(document: ComposeDocument | None, runner, credentials, *, configs
             document.parse(source)
             await runner.validate(source)
             return document.save(source, body.version)
-
-    @app.get("/api/services")
-    async def services():
-        statuses = await runner.status()
-        # Do not expose labels, commands, or raw inspect responses containing credentials.
-        keys = {"Service", "Name", "State", "Health", "ExitCode"}
-        return {
-            "services": [
-                {key: value for key, value in status.items() if key in keys} for status in statuses
-            ]
-        }
 
     return app

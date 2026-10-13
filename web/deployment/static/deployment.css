@@ -47,7 +47,7 @@ summary { cursor: pointer; padding: 12px 0; font-weight: 600; }
 .bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .panel { background: white; border: 1px solid var(--line); border-radius: 8px; padding: 20px; min-width: 0; }
 .task-panel { margin-top: 20px; }
-.status-row, .backup-row { padding: 10px 0; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 12px; align-items: center; font-size: 13px; overflow-wrap: anywhere; }
+.backup-row { padding: 10px 0; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 12px; align-items: center; font-size: 13px; overflow-wrap: anywhere; }
 .backup-row button { flex-shrink: 0; }
 .login-card { max-width: 460px; margin: 60px auto; padding: 28px; background: white; border: 1px solid var(--line); border-radius: 10px; }
 .login-card button { width: 100%; margin-top: 24px; }

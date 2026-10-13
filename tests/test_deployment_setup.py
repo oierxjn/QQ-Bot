@@ -1,8 +1,6 @@
 import json
 import os
 import sys
-from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -11,7 +9,6 @@ from web.deployment import default_source_root
 from web.deployment.__main__ import main
 from web.deployment.auth import Authentication
 from web.deployment.config import DeploymentError
-from web.deployment.runner import ComposeRunner, discover_deployment
 from web.deployment.setup import (
     adopt_mode,
     discover_project,
@@ -43,33 +40,26 @@ def test_initialization_preserves_existing_files_and_credentials(tmp_path):
         initialize(tmp_path, "different-project")
 
 
-def test_project_detection_uses_existing_container_labels(tmp_path, monkeypatch):
+def test_project_detection_reads_compose_name(tmp_path):
+    (tmp_path / "compose.yaml").write_text(SOURCE + "name: from-compose\n", encoding="utf-8")
+    assert discover_project(tmp_path) == "from-compose"
+
+
+def test_explicit_project_name_overrides_detection(tmp_path):
     (tmp_path / "compose.yaml").write_text(SOURCE, encoding="utf-8")
-    monkeypatch.setattr(
-        "web.deployment.setup.subprocess.run",
-        lambda *args, **kwargs: SimpleNamespace(stdout=f"original\t{tmp_path}\n"),
-    )
-    assert discover_project(tmp_path) == "original"
+    assert discover_project(tmp_path, "override") == "override"
     with pytest.raises(DeploymentError):
-        discover_project(tmp_path, "different")
+        discover_project(tmp_path, "Invalid Name!")
 
 
-def test_ambiguous_project_requires_explicit_existing_project(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "web.deployment.setup.subprocess.run",
-        lambda *args, **kwargs: SimpleNamespace(stdout=f"first\t{tmp_path}\nsecond\t{tmp_path}\n"),
-    )
+def test_project_detection_requires_compose_file(tmp_path):
     with pytest.raises(DeploymentError):
         discover_project(tmp_path)
-    assert discover_project(tmp_path, "second") == "second"
 
 
-def test_new_deployment_honors_env_project_name(tmp_path, monkeypatch):
-    (tmp_path / "compose.yaml").write_text(SOURCE, encoding="utf-8")
+def test_new_deployment_honors_env_project_name(tmp_path):
+    (tmp_path / "compose.yaml").write_text(SOURCE + "name: from-compose\n", encoding="utf-8")
     (tmp_path / ".env").write_text("COMPOSE_PROJECT_NAME='chosen'\n", encoding="utf-8")
-    monkeypatch.setattr(
-        "web.deployment.setup.subprocess.run", lambda *args, **kwargs: SimpleNamespace(stdout="")
-    )
     assert discover_project(tmp_path) == "chosen"
 
 
@@ -121,79 +111,38 @@ def test_compose_init_generates_initial_password(tmp_path):
     assert len(initial.read_text(encoding="utf-8").strip()) >= 12
 
 
-def test_adopt_mode_migrates_identity(tmp_path, monkeypatch):
+def test_adopt_mode_migrates_identity(tmp_path):
     configs = tmp_path / "configs"
     configs.mkdir()
     for name in CONFIG_NAMES:
         (configs / f"{name}.template").write_text("", encoding="utf-8")
-    (tmp_path / "compose.yaml").write_text(SOURCE, encoding="utf-8")
+    (tmp_path / "compose.yaml").write_text(SOURCE + "name: adopted\n", encoding="utf-8")
     initialize_source(tmp_path, "test-password")
     credentials = (tmp_path / ".webcontroller" / "credentials.json").read_bytes()
-    monkeypatch.setattr(
-        "web.deployment.setup.subprocess.run",
-        lambda *args, **kwargs: SimpleNamespace(stdout=f"proj\t{tmp_path}\n"),
-    )
-    adopt_mode(tmp_path, "compose", local=tmp_path)
+    adopt_mode(tmp_path, "compose")
     settings = json.loads(
         (tmp_path / ".webcontroller" / "settings.json").read_text(encoding="utf-8")
     )
     assert settings == {
         "root": str(tmp_path.resolve()),
-        "project": "proj",
+        "project": "adopted",
         "mode": "compose",
     }
     assert (tmp_path / ".webcontroller" / "credentials.json").read_bytes() == credentials
-    adopt_mode(tmp_path, "source", local=tmp_path)
+    adopt_mode(tmp_path, "source")
     settings = json.loads(
         (tmp_path / ".webcontroller" / "settings.json").read_text(encoding="utf-8")
     )
     assert settings == {"root": str(tmp_path.resolve()), "mode": "source"}
-    with pytest.raises(DeploymentError):
-        adopt_mode(tmp_path.parent / "elsewhere", "source", local=tmp_path)
-
-
-def test_compose_init_records_host_root_with_local_state(tmp_path):
-    host = tmp_path / "host"
-    deploy = tmp_path / "deploy"
-    for directory in (host, deploy):
-        directory.mkdir()
-        (directory / "compose.yaml").write_text(SOURCE, encoding="utf-8")
-    initialize(host, "split-project", "test-password", local=deploy)
-    settings = json.loads((deploy / ".webcontroller" / "settings.json").read_text(encoding="utf-8"))
-    assert settings == {
-        "root": str(host.resolve()),
-        "project": "split-project",
-        "mode": "compose",
-    }
-    assert not (host / ".webcontroller").exists()
-
-
-def test_discover_deployment_reads_own_mount(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOSTNAME", "a1b2c3d4e5f6")
-    mounts = json.dumps(
-        [
-            {"Type": "bind", "Destination": "/deploy", "Source": str(tmp_path), "RW": True},
-            {"Type": "volume", "Destination": "/data", "Source": "/var/lib/docker/vol"},
-        ]
+    elsewhere = tmp_path.parent / "adopt-elsewhere"
+    (elsewhere / ".webcontroller").mkdir(parents=True)
+    (elsewhere / ".webcontroller" / "settings.json").write_text(
+        json.dumps({"root": str(tmp_path.resolve()), "mode": "source"}), encoding="utf-8"
     )
-    monkeypatch.setattr(
-        "web.deployment.runner.subprocess.run",
-        lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=mounts),
-    )
-    assert discover_deployment(Path("/deploy")) == tmp_path
     with pytest.raises(DeploymentError):
-        discover_deployment(Path("/other"))
-    monkeypatch.setenv("HOSTNAME", "not-a-container-id")
+        adopt_mode(elsewhere, "source")
     with pytest.raises(DeploymentError):
-        discover_deployment(Path("/deploy"))
-
-
-def test_runner_splits_project_dir_and_local_files(tmp_path):
-    runner = ComposeRunner(
-        tmp_path, "split-project", verify_container=False, local_dir=Path("/deploy")
-    )
-    assert runner.prefix[runner.prefix.index("--project-directory") + 1] == str(tmp_path.resolve())
-    assert runner.local == Path("/deploy").resolve()
+        adopt_mode(tmp_path.parent / "never-initialized", "source")
 
 
 def test_serve_auto_initializes(tmp_path, monkeypatch):

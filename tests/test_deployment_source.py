@@ -140,7 +140,7 @@ def test_source_cli_background_start_and_stop(source_root):
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
-    child = start_background(source_root.resolve(), "source", port, root=source_root.resolve())
+    child = start_background(source_root.resolve(), "source", port)
     record = source_root / ".webcontroller" / "panel.pid"
     try:
         deadline = time.monotonic() + 15
