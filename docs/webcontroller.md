@@ -13,7 +13,9 @@ uv run -m web.deployment --mode source
 
 首次运行自动初始化并启动服务；也可先执行 `uv run -m web.deployment --mode source --init` 只初始化不启动。
 
-初始化自动生成随机管理员密码，写入 `.webcontroller/initial-password`（仅当前用户可读），终端只提示文件路径，不显示密码内容；首次成功登录后面板自动删除该文件，请尽快用 `--reset-password` 设置自己的密码。也可在 `--init` 或 `--reset-password` 时用 `--password` 非交互指定密码，此时不生成密码文件。密码长度不限制，仅以 scrypt 哈希存储，强度由使用者自行负责。初始化从 `configs/*.toml.template` 补齐五类缺失配置，不覆盖已有文件；重复执行保留密码。设置与密码哈希存放于 `.webcontroller/`，不写入 `.env`。同一目录可随时在两种模式间切换：启动时会自动把状态目录的模式记录改写为当前模式，密码和备份保留；只有部署目录或 Compose 项目名与状态记录不同才拒绝。建议同一时间只保留一个面板实例，两侧同时编辑同一批配置时由版本检查兜底。
+初始化自动生成随机管理员密码，写入 `.webcontroller/initial-password`（仅当前用户可读），终端只提示文件路径，不显示密码内容；首次成功登录后面板自动删除该文件，请尽快用 `--reset-password` 设置自己的密码。也可在 `--init` 或 `--reset-password` 时用 `--password` 非交互指定密码，此时不生成密码文件。密码长度不限制，仅以 scrypt 哈希存储，强度由使用者自行负责。初始化从 `configs/*.toml.template` 补齐五类缺失配置，不覆盖已有文件；重复执行保留密码。设置与密码哈希存放于 `.webcontroller/`，不写入 `.env`。
+
+同一目录可随时在两种模式间切换：启动时会自动把状态目录的模式记录改写为当前模式，密码和备份保留；只有部署目录或 Compose 项目名与状态记录不同才拒绝。建议同一时间只保留一个面板实例，两侧同时编辑同一批配置时由版本检查兜底。
 
 默认监听 `127.0.0.1:7001`，可使用 `--port 7002` 指定其他端口。可用 `--bg` 以后台进程运行（`--mode source --bg`），PID 与日志分别记录在 `.webcontroller/panel.pid`、`panel.log`，用 `--mode source --stop` 停止；长期运行仍建议使用下文的 systemd 服务。远程访问使用下文的 SSH 转发。旧 Bot 配置中的 `web_controller_address` 不控制独立面板，仍保留以兼容 Bot 配置加载。
 
@@ -75,7 +77,7 @@ docker compose up -d
 ssh -L 7001:127.0.0.1:7001 user@server
 ```
 
-再打开本机的 `http://127.0.0.1:7001`。第一版仅接受 localhost/回环地址的 Host，不支持公网反向代理或局域网直接访问。面板的 Compose 端口只绑定宿主机回环地址。
+再打开本机的 `http://127.0.0.1:7001`。面板仅接受 localhost/回环地址的 Host，不支持公网反向代理或局域网直接访问。面板的 Compose 端口只绑定宿主机回环地址。
 
 **面板对 Docker daemon 零访问。** 校验只执行 `docker compose config` 等客户端操作，不读取容器状态、不启停容器；容器更新和状态查询都在宿主机执行。仍不要将端口绑定到公网，面板没有公开注册入口。
 
@@ -97,10 +99,10 @@ docker compose run --rm --no-deps webcontroller python -m web.deployment --init 
 
 面板把部署目录挂载到容器内 `/deploy`，并以该路径作为 `--project-directory`。移动部署目录后状态记录中的路径不再匹配，需删除 `.webcontroller/settings.json` 重新初始化（密码和备份保留）。
 
-## 编辑与应用
+## 编辑与保存
 
 1. 在服务表单编辑镜像、重启策略、环境变量、端口、挂载、依赖与健康检查。结构字段接受 JSON 列表/对象；留空删除字段。点击“更新草稿”或切换到完整 YAML，同步到同一份草稿。
-2. 完整 YAML 可以配置其他 Compose 字段和增加业务服务。第一版管理单个 `compose.yaml`，不支持 `include`、`extends` 或多个文件叠加。
+2. 完整 YAML 可以配置其他 Compose 字段和增加业务服务。面板管理单个 `compose.yaml`，不支持 `include`、`extends` 或多个文件叠加。
 3. 点击“校验与差异”检查草稿。校验把部署目录（容器内为 `/deploy`）作为 `--project-directory`、部署目录内的 `.env`（如存在）作为 `--env-file` 传给 Compose，先执行 `docker compose config --quiet`，再检查规范化的依赖与挂载。部署目录内的相对 bind 源必须已存在，防止误挂载空目录；绝对路径挂载源无法在面板容器内验证，仅透传。
 4. 点击“校验并保存”，检查差异后确认。保存备份后原子替换文件。若文件已被其他操作修改，返回冲突并保留草稿；可下载草稿后重新读取比较。
 5. 面板不执行任何容器操作。保存后需在宿主机执行 `docker compose up -d` 更新容器；变更端口、挂载或环境变量通常需要重建容器，仅 `restart` 不会应用这些变化。删除服务配置后，旧容器仍可能存在，需在宿主机确认后处理。
@@ -127,7 +129,7 @@ bash scripts/setup_webcontroller.sh --reset-password
 docker compose restart webcontroller
 ```
 
-会话 8 小时后过期，面板重启使旧会话失效；失败登录超过每分钟 5 次会暂时限速。恢复密码不会在终端输出密码。校验命令的报错输出会过滤 Compose 环境变量和 `.env` 中的值；完整 YAML、差异、下载与备份仍可能包含明文密码，仅对登录管理员开放。
+会话 8 小时后过期，面板重启使旧会话失效；失败登录超过每分钟 5 次会暂时限速。重置密码不会在终端输出新密码。校验命令的报错输出会过滤 Compose 环境变量和 `.env` 中的值；完整 YAML、差异、下载与备份仍可能包含明文密码，仅对登录管理员开放。
 
 ## 本地构建与验证
 
@@ -161,10 +163,10 @@ docker build -f Dockerfile.webcontroller -t theresa-webcontroller:test .
 RUN_WEB_DOCKER_TESTS=1 uv run pytest tests/test_deployment_docker.py
 ```
 
-浏览器测试只使用临时配置和受控 Docker 替身；Docker 集成测试使用随机命名的隔离项目、Alpine 容器和临时挂载，结束后仅清理该测试项目及其卷。
+浏览器测试使用临时配置和进程内的校验替身（FakeRunner），不访问 Docker；Docker 集成测试使用随机命名的隔离项目、Alpine 容器和临时挂载，结束后仅清理该测试项目及其卷。
 
 如果测试进程本身也在 Linux 容器中运行，需要挂载 Docker socket、将测试目录以相同绝对路径挂载，并使用 `--network host`。集成测试通过宿主机回环地址访问面板的随机端口；默认 bridge 网络中的 `127.0.0.1` 指向测试容器自身。
 
-更早版本的验证记录（2026-10-06 前后）针对含一键应用、容器状态与 Docker socket 的设计，相关结论不再逐条适用。当前版本（移除 Docker socket 后）在 Windows 完成全量测试：配置、API、初始化、源码命令与真实 Chromium 共 222 项通过，4 项 Linux Docker 集成测试因本机缺少 Docker Engine 跳过。集成测试已改写为无 socket 场景（面板容器内自动初始化、登录、保存），需在 Linux/WSL 重新运行确认；VM 部署验证同样待重做。
+更早版本的验证记录（2026-10-06 前后）针对含一键应用、容器状态与 Docker socket 的设计，相关结论不再逐条适用。当前版本（移除 Docker socket 后）在 Windows 运行全量测试：222 项通过，4 项跳过——2 项 Linux Docker 集成测试因本机缺少 Docker Engine，2 项 Chromium 浏览器测试未启用。集成测试已改写为无 socket 场景（面板容器内自动初始化、登录、保存），需在 Linux/WSL 重新运行确认；VM 部署验证同样待重做。
 
 实现依据：[Compose config](https://docs.docker.com/reference/cli/docker/compose/config/)、[Profiles](https://docs.docker.com/compose/how-tos/profiles/)、[项目名称](https://docs.docker.com/compose/how-tos/project-name/)。
