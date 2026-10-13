@@ -8,8 +8,8 @@ from fastapi.testclient import TestClient
 
 from tests.test_deployment_api import login
 from tests.test_deployment_api import panel as panel_fixture
-from web.deployment.__main__ import build_app
 from web.deployment.config import DeploymentError
+from web.deployment.runtime import build_app
 from web.deployment.setup import initialize_source
 
 compose_panel = panel_fixture

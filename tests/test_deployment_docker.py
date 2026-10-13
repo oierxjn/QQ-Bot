@@ -1,17 +1,14 @@
 """Isolated Linux Docker integration; never targets the real deployment."""
 
-import asyncio
-import io
 import os
 import shutil
 import subprocess
 import sys
 import uuid
 
-import httpx
 import pytest
 
-from web.deployment.config import ComposeDocument, yaml_parser
+from web.deployment.config import ComposeDocument
 from web.deployment.runner import ComposeRunner
 
 pytestmark = pytest.mark.skipif(
@@ -87,87 +84,4 @@ volumes:
         assert "sidecar" not in services_up, "profiled service must not be started"
     finally:
         # Only the unique temporary project created above is removed.
-        command("down", "--volumes", "--remove-orphans")
-
-
-@pytest.mark.asyncio
-async def test_actual_panel_container_login_and_config_save(tmp_path):
-    project = "paneltest-" + uuid.uuid4().hex
-    image = os.environ.get("WEB_PANEL_TEST_IMAGE", "theresa-webcontroller:test")
-    config = {
-        "services": {
-            "webcontroller": {
-                "image": image,
-                "ports": ["127.0.0.1::7001"],
-                "volumes": [f"{tmp_path}:/deploy"],
-            },
-            "worker": {
-                "image": "alpine:3.21",
-                "command": ["sleep", "300"],
-                "environment": {"REVISION": "1"},
-            },
-        }
-    }
-    output = io.StringIO()
-    yaml_parser().dump(config, output)
-    (tmp_path / "compose.yaml").write_text(output.getvalue(), encoding="utf-8")
-    prefix = [
-        "docker",
-        "compose",
-        "--project-directory",
-        str(tmp_path),
-        "-p",
-        project,
-        "-f",
-        str(tmp_path / "compose.yaml"),
-    ]
-
-    def command(*args):
-        return subprocess.run(
-            prefix + list(args), check=True, capture_output=True, text=True
-        ).stdout.strip()
-
-    try:
-        command("up", "-d", "webcontroller")
-        address = command("port", "webcontroller", "7001")
-        # Without the panel image published, first boot may need a local build;
-        # serving auto-initializes and writes the bootstrap password into /deploy.
-        settings = tmp_path / ".webcontroller" / "settings.json"
-        initial = tmp_path / ".webcontroller" / "initial-password"
-        async with httpx.AsyncClient(base_url="http://" + address, timeout=90) as client:
-            response = None
-            for _attempt in range(200):
-                if settings.is_file() and initial.is_file():
-                    try:
-                        response = await client.post(
-                            "/api/login",
-                            json={"password": initial.read_text(encoding="utf-8").strip()},
-                        )
-                        if response.status_code == 200:
-                            break
-                    except httpx.TransportError:
-                        pass
-                await asyncio.sleep(0.25)
-            else:
-                raise AssertionError("Panel container did not become ready")
-            assert not initial.exists(), "initial password must be removed after login"
-            client.headers["X-CSRF-Token"] = response.json()["csrf"]
-            document_payload = (await client.get("/api/compose")).json()
-            draft = (
-                await client.post(
-                    "/api/compose/patch",
-                    json={
-                        "source": document_payload["source"],
-                        "service": "worker",
-                        "changes": {"environment": {"REVISION": "2"}},
-                    },
-                )
-            ).json()
-            saved = await client.put(
-                "/api/compose",
-                json={"source": draft["source"], "version": document_payload["version"]},
-            )
-            assert saved.status_code == 200, saved.text
-            assert saved.json()["services"]["worker"]["environment"]["REVISION"] == "2"
-    finally:
         command("down", "--volumes", "--remove-orphans")

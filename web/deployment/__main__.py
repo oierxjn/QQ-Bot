@@ -11,40 +11,10 @@ from pathlib import Path
 import uvicorn
 
 from . import default_source_root
-from .app import create_app
 from .auth import create_credentials
 from .config import ComposeDocument, DeploymentError, atomic_write
-from .runner import ComposeRunner
-from .setup import (
-    adopt_mode,
-    discover_project,
-    initialize,
-    initialize_source,
-    print_initial_password,
-)
-from .toml_config import ConfigStore
-
-PANEL_DEPLOY_MOUNT = "/deploy"
-
-
-def build_app(root, mode):
-    root = Path(root).resolve()
-    state = root / ".webcontroller"
-    settings = json.loads((state / "settings.json").read_text(encoding="utf-8"))
-    if settings.get("root") != str(root):
-        raise RuntimeError(
-            f"部署目录与初始化记录不一致：状态记录 {settings.get('root')!r}，当前为 {str(root)!r}"
-        )
-    if settings.get("mode", "compose") != mode:
-        raise RuntimeError(
-            f"初始化模式 {settings.get('mode', 'compose')!r} 与启动模式 {mode!r} 不一致"
-        )
-    credentials = json.loads((state / "credentials.json").read_text(encoding="utf-8"))
-    if mode == "source":
-        return create_app(None, None, credentials, configs=ConfigStore(root, state))
-    document = ComposeDocument(root, state)
-    runner = ComposeRunner(root, settings["project"])
-    return create_app(document, runner, credentials)
+from .runtime import PANEL_DEPLOY_MOUNT, prepare
+from .setup import discover_project, initialize, initialize_source, print_initial_password
 
 
 def process_alive(pid):
@@ -203,7 +173,7 @@ def run_setup(root, args, parser):
         atomic_write(state / "protected.json", json.dumps(protected, ensure_ascii=False))
     initialize(root, project, args.password)
     print(f"面板初始化完成，Compose 项目：{project}")
-    print("执行 docker compose up -d webcontroller 后访问 http://127.0.0.1:7001")
+    print("执行 docker compose up -d 后访问 http://127.0.0.1:7001")
     print_initial_password(root)
 
 
@@ -250,17 +220,9 @@ def main():
         run_setup(root, args, parser)
         return
     try:
-        if not (root / ".webcontroller" / "settings.json").is_file():
-            if args.mode == "source":
-                initialize_source(root, None)
-            else:
-                initialize(root, discover_project(root), None)
-            print_initial_password(root)
-        else:
-            adopt_mode(root, args.mode)
+        app = prepare(root, args.mode)
     except DeploymentError as exc:
         raise SystemExit(f"初始化或模式切换失败：{exc}") from None
-    app = build_app(root, args.mode)
     uvicorn.run(
         app,
         host="127.0.0.1" if args.mode == "source" else "0.0.0.0",

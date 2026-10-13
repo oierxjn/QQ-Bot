@@ -28,7 +28,7 @@ def test_source_browser_form_text_conflict_restore_and_groups(tmp_path):
 
     from playwright.sync_api import expect, sync_playwright
 
-    from web.deployment.__main__ import build_app
+    from web.deployment.runtime import build_app
 
     (tmp_path / "configs").mkdir()
     for template in Path("configs").glob("*.toml.template"):
@@ -154,7 +154,7 @@ def test_browser_edit_validate_save_restore_and_mobile(tmp_path):
             page.locator("#service-list").get_by_role(
                 "button", name="webcontroller", exact=True
             ).click()
-            expect(page.locator("#field-image")).to_be_disabled()
+            expect(page.locator("#field-image")).to_have_value("panel:1")
             for width in (320, 768, 1024, 1440):
                 page.set_viewport_size({"width": width, "height": 900})
                 assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")

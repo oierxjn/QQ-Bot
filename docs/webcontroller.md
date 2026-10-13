@@ -1,6 +1,6 @@
-# 独立部署面板
+# 部署面板（WebController）
 
-面板独立于 Bot 启动，QQ 未登录、Bot 配置错误或 Bot 停止时仍可使用。源码和 Docker 模式均提供 TOML 配置管理、校验、差异及备份恢复；Docker 模式另外提供 Compose 表单/YAML 编辑。面板不挂载 Docker socket，对 Docker daemon 零访问：不显示容器运行状态，也不执行任何容器操作。
+面板不依赖 QQ 登录和数据库。源码部署中它与 Bot 分开运行；Docker 部署中它随 Bot 进程运行（由 `THERESA_WEBCONTROLLER=1` 启用；面板自身的异常只记录日志，不会拖垮 Bot，Bot 进程退出时两者随容器一起重启）。两种方式均提供 TOML 配置管理、校验、差异及备份恢复；Docker 部署另外提供 Compose 表单/YAML 编辑。面板不挂载 Docker socket，对 Docker daemon 零访问：不显示容器运行状态，也不执行任何容器操作。
 
 ## 纯源码部署（Windows / Linux）
 
@@ -69,7 +69,7 @@ Bot 基础配置提供表单，密码和令牌默认遮蔽；插件提供全局�
 docker compose up -d
 ```
 
-面板服务随 compose 启动并在容器内自动初始化（从 `compose.yaml`、`.env` 或目录名推断 Compose 项目名），初始面板密码自动生成，存于 `.webcontroller/initial-password`，首次成功登录后自动删除；与 LLBot WebUI 密码独立。面板把部署目录以 `source: .` 挂载到容器内固定路径 `/deploy`，不需要 Docker socket，`compose.yaml` 不需要任何部署目录变量。
+面板随 theresa 服务启动：compose.yaml 中的 `THERESA_WEBCONTROLLER=1` 打开面板，部署目录以 `source: .` 挂载到容器内固定路径 `/deploy`，端口映射为 `127.0.0.1:7001:7001`。首次启动自动初始化，初始面板密码生成于宿主机的 `.webcontroller/initial-password`，首次成功登录后自动删除；与 LLBot WebUI 密码独立。面板进程与 Bot 在同一容器、同一事件循环中运行，不使用 Docker socket，`compose.yaml` 不需要任何部署目录变量。
 
 访问 `http://127.0.0.1:7001`。远程服务器使用 SSH 转发：
 
@@ -83,19 +83,19 @@ ssh -L 7001:127.0.0.1:7001 user@server
 
 ## 已有部署升级
 
-不要重新执行 `docker_compose_init.sh`，它用于首次初始化。保留当前 `compose.yaml` 与配置，在 Compose 的 services 中加入新版提供的 `webcontroller` 服务块（`source: .` 挂载到 `/deploy`，无环境变量，不需要 Docker socket），然后执行：
+不要重新执行 `docker_compose_init.sh`，它用于首次初始化。保留当前 `compose.yaml` 与配置，拉取新版镜像，并在 `theresa` 服务中加入面板所需的三项：`127.0.0.1:7001:7001` 端口映射、`source: .` 到 `/deploy` 的挂载、`THERESA_WEBCONTROLLER: "1"` 环境变量，然后执行：
 
 ```bash
-docker compose up -d webcontroller
+docker compose up -d
 ```
 
-面板容器首次启动时自动初始化，从 `compose.yaml`、`.env` 或目录名推断原 Compose 项目名称；推断结果不符时在宿主机明确指定：
+面板首次启动时自动初始化，从 `compose.yaml`、`.env` 或目录名推断 Compose 项目名称；推断结果不符时在宿主机明确指定：
 
 ```bash
-docker compose run --rm --no-deps webcontroller python -m web.deployment --init --project-name existing-project
+bash scripts/setup_webcontroller.sh --init --project-name existing-project
 ```
 
-`scripts/setup_webcontroller.sh` 保留为宿主机维护入口（重置密码、登记保护配置等），内部通过 `docker compose run` 执行同一命令。密码哈希、会话密钥、受保护配置和备份保存在 `.webcontroller/`；文件权限为 0600、状态目录为 0700。这些文件不应提交到 Git 或打包进镜像。
+`scripts/setup_webcontroller.sh` 保留为宿主机维护入口（重置密码、登记保护配置等），内部通过 `docker compose run --entrypoint python3 theresa` 执行同一命令。密码哈希、会话密钥、受保护配置和备份保存在 `.webcontroller/`；文件权限为 0600、状态目录为 0700。这些文件不应提交到 Git 或打包进镜像。
 
 面板把部署目录挂载到容器内 `/deploy`，并以该路径作为 `--project-directory`。移动部署目录后状态记录中的路径不再匹配，需删除 `.webcontroller/settings.json` 重新初始化（密码和备份保留）。
 
@@ -115,42 +115,42 @@ Compose、Bot TOML、LLBot JSON 暂不联动。修改监听端口后要同步检
 
 页面中预览备份并确认恢复；恢复当前配置前也会自动备份。恢复只替换配置文件，不回滚数据库、卷数据或容器状态。
 
-面板服务、Compose 项目名以及面板依赖的网络/卷不能从网页修改。升级面板镜像或修改其部署配置时，在宿主机编辑后重新登记保护配置：
+Compose 项目名称不能从网页修改。修改名称或面板启动项（端口映射、`/deploy` 挂载、`THERESA_WEBCONTROLLER`）时，在宿主机编辑 `compose.yaml` 后重新登记保护配置：
 
 ```bash
 bash scripts/setup_webcontroller.sh --accept-panel-upgrade
-docker compose up -d webcontroller
+docker compose up -d
 ```
 
 忘记密码时：
 
 ```bash
 bash scripts/setup_webcontroller.sh --reset-password
-docker compose restart webcontroller
+docker compose restart theresa
 ```
 
 会话 8 小时后过期，面板重启使旧会话失效；失败登录超过每分钟 5 次会暂时限速。重置密码不会在终端输出新密码。校验命令的报错输出会过滤 Compose 环境变量和 `.env` 中的值；完整 YAML、差异、下载与备份仍可能包含明文密码，仅对登录管理员开放。
 
 ## 本地构建与验证
 
-首次发布前，或暂不使用已发布镜像时，先在 Linux/WSL 构建面板镜像：
+首次发布前，或暂不使用已发布镜像时，在 Linux/WSL 构建 Bot 镜像（面板代码与 Docker CLI 已包含在内，无独立面板镜像）：
 
 ```bash
-docker build -f Dockerfile.webcontroller -t heai/theresa-webcontroller:latest .
-docker compose up -d webcontroller
+docker build -t heai/theresa:latest .
+docker compose up -d
 ```
 
-面板容器首次启动时自动初始化；镜像内置 Docker CLI 与 Compose 插件，仅用于客户端校验，容器不挂载 Docker socket。镜像版本变更直接修改 `compose.yaml` 中 webcontroller 服务的 `image` 字段。
+镜像内置 Docker CLI 与 Compose 插件，仅用于客户端校验，容器不挂载 Docker socket。镜像版本变更直接修改 `compose.yaml` 中 theresa 服务的 `image` 字段。
 
 如果构建机器依赖 HTTP 代理，Docker 服务代理负责镜像拉取；BuildKit 的认证请求也可能由 Docker CLI 进程发起，需要同时给构建进程设置代理。构建阶段的 `uv sync` 则使用 build args。例如（将地址替换为构建机器可达的代理）：
 
 ```bash
 BUILD_PROXY=http://192.168.134.1:10809
 sudo env HTTP_PROXY="$BUILD_PROXY" HTTPS_PROXY="$BUILD_PROXY" \
-  docker build -f Dockerfile.webcontroller \
+  docker build \
   --build-arg HTTP_PROXY="$BUILD_PROXY" \
   --build-arg HTTPS_PROXY="$BUILD_PROXY" \
-  -t heai/theresa-webcontroller:latest .
+  -t heai/theresa:latest .
 ```
 
 ```bash
@@ -159,14 +159,13 @@ uv run ruff check .
 uv run ruff format --check .
 uv run --extra Schedule playwright install chromium
 RUN_WEB_BROWSER_TESTS=1 uv run --extra Schedule pytest tests/test_deployment_browser.py
-docker build -f Dockerfile.webcontroller -t theresa-webcontroller:test .
 RUN_WEB_DOCKER_TESTS=1 uv run pytest tests/test_deployment_docker.py
 ```
 
-浏览器测试使用临时配置和进程内的校验替身（FakeRunner），不访问 Docker；Docker 集成测试使用随机命名的隔离项目、Alpine 容器和临时挂载，结束后仅清理该测试项目及其卷。
+浏览器测试使用临时配置和进程内的校验替身（FakeRunner），不访问 Docker；Docker 集成测试在宿主机上使用随机命名的隔离项目、Alpine 容器和临时挂载，结束后仅清理该测试项目及其卷。
 
-如果测试进程本身也在 Linux 容器中运行，需要挂载 Docker socket、将测试目录以相同绝对路径挂载，并使用 `--network host`。集成测试通过宿主机回环地址访问面板的随机端口；默认 bridge 网络中的 `127.0.0.1` 指向测试容器自身。
+如果测试进程本身也在 Linux 容器中运行，需要挂载 Docker socket、将测试目录以相同绝对路径挂载，并使用 `--network host`。
 
-更早版本的验证记录（2026-10-06 前后）针对含一键应用、容器状态与 Docker socket 的设计，相关结论不再逐条适用。当前版本（移除 Docker socket 后）在 Windows 运行全量测试：222 项通过，4 项跳过——2 项 Linux Docker 集成测试因本机缺少 Docker Engine，2 项 Chromium 浏览器测试未启用。集成测试已改写为无 socket 场景（面板容器内自动初始化、登录、保存），需在 Linux/WSL 重新运行确认；VM 部署验证同样待重做。
+更早版本的验证记录（2026-10-06 前后）针对含一键应用、容器状态与 Docker socket 的设计，相关结论不再逐条适用。当前版本（面板并入 Bot 进程、无独立面板镜像）在 Windows 运行全量测试：220 项通过，3 项跳过——1 项 Linux Docker 集成测试因本机缺少 Docker Engine，2 项 Chromium 浏览器测试未启用；theresa 容器内部署流程（自动初始化、登录、保存）需在 Linux/WSL 验证。
 
 实现依据：[Compose config](https://docs.docker.com/reference/cli/docker/compose/config/)、[Profiles](https://docs.docker.com/compose/how-tos/profiles/)、[项目名称](https://docs.docker.com/compose/how-tos/project-name/)。

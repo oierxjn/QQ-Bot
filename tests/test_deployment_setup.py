@@ -159,6 +159,33 @@ def test_serve_auto_initializes(tmp_path, monkeypatch):
     assert (tmp_path / ".webcontroller" / "initial-password").is_file()
 
 
+def test_compose_serve_auto_initializes(tmp_path, monkeypatch):
+    (tmp_path / "compose.yaml").write_text(SOURCE, encoding="utf-8")
+    monkeypatch.setattr(
+        sys, "argv", ["web.deployment", "--mode", "compose", "--root", str(tmp_path)]
+    )
+    monkeypatch.setattr("web.deployment.__main__.uvicorn.run", lambda *args, **kwargs: None)
+    main()
+    settings = json.loads(
+        (tmp_path / ".webcontroller" / "settings.json").read_text(encoding="utf-8")
+    )
+    assert settings["mode"] == "compose"
+    assert (tmp_path / ".webcontroller" / "initial-password").is_file()
+    assert (tmp_path / ".webcontroller" / "protected.json").is_file()
+
+
+def test_detect_runtime_uses_deploy_mount(tmp_path, monkeypatch):
+    from web.deployment import runtime
+
+    (tmp_path / "compose.yaml").write_text(SOURCE, encoding="utf-8")
+    monkeypatch.setattr(runtime, "PANEL_DEPLOY_MOUNT", str(tmp_path))
+    assert runtime.detect_runtime() == (tmp_path.resolve(), "compose")
+    monkeypatch.setattr(runtime, "PANEL_DEPLOY_MOUNT", str(tmp_path / "absent"))
+    root, mode = runtime.detect_runtime()
+    assert mode == "source"
+    assert (root / "pyproject.toml").is_file()
+
+
 def test_source_init_with_explicit_password(tmp_path):
     configs = tmp_path / "configs"
     configs.mkdir()

@@ -270,12 +270,22 @@ class Bot:
         event_ip, event_port = self.client_address.split(":")
         Log.info(f"启动监听服务 {self.client_address}")
         event_server = asyncio.create_task(event.run(event_ip, int(event_port)))
-        ## web controller 暂时弃用
-        # web_controller = WebController(self)
-        # web_ip, web_port = self.web_controller_address.split(":")
-        # Log.info(f"启动 web controller 服务 {web_ip}:{web_port}")
-        # web_server = asyncio.create_task(web_controller.run(web_ip, int(web_port)))
-        # Log.info("web controller 服务启动成功！")
+
+        if os.environ.get("THERESA_WEBCONTROLLER") == "1":
+            from web.deployment.runtime import serve as panel_serve
+
+            Log.info("启动 WebController 部署面板")
+            panel_server = asyncio.create_task(panel_serve())
+
+            def _on_panel_done(task: asyncio.Task) -> None:
+                try:
+                    exc = task.exception()
+                except asyncio.CancelledError:
+                    return
+                if exc is not None:
+                    Log.error(f"WebController 面板异常退出: {exc}")
+
+            panel_server.add_done_callback(_on_panel_done)
 
         webhook_handler = None
         scheduler = Scheduler(self.configs_path)

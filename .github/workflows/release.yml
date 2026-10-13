@@ -63,19 +63,6 @@ jobs:
                   cache-to: type=gha,mode=max
                   platforms: linux/amd64,linux/arm64
 
-            - name: Build and Push WebController image
-              uses: docker/build-push-action@v7
-              with:
-                  context: .
-                  file: Dockerfile.webcontroller
-                  push: true
-                  tags: |
-                      heai/theresa-webcontroller:${{ inputs.version }}
-                      ${{ inputs.push_latest && 'heai/theresa-webcontroller:latest' || '' }}
-                  cache-from: type=gha,scope=webcontroller
-                  cache-to: type=gha,scope=webcontroller,mode=max
-                  platforms: linux/amd64,linux/arm64
-
             - name: Package Files
               run: |
                   mkdir -p dist

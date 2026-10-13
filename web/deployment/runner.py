@@ -35,12 +35,11 @@ class ComposeRunner:
     touches the Docker daemon, so no socket access is required.
     """
 
-    def __init__(self, root: Path, project: str, panel_service="webcontroller"):
+    def __init__(self, root: Path, project: str):
         if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", project):
             raise DeploymentError("无效的 Compose 项目名称")
         self.root = Path(root).resolve()
         self.project = project
-        self.panel_service = panel_service
         self.prefix = [
             "docker",
             "compose",
@@ -141,21 +140,8 @@ class ComposeRunner:
             await self.execute(args + ["config", "--quiet"], source)
             result = json.loads(await self.execute(args + ["config", "--format", "json"], source))
             sensitive_values(result, self.known_sensitive)
-            services = result.get("services", {})
-            for name, service in services.items():
-                if name == self.panel_service:
-                    continue
-                references = set(service.get("depends_on", {}))
-                references.update(
-                    str(item).split(":")[0] for item in service.get("volumes_from", [])
-                )
-                references.update(str(item).split(":")[0] for item in service.get("links", []))
-                if self.panel_service in references or any(
-                    service.get(key) == f"service:{self.panel_service}"
-                    for key in ("network_mode", "pid", "ipc")
-                ):
-                    raise DeploymentError("业务服务不能依赖面板服务")
-                for mount in service.get("volumes", []):
+            for service in result.get("services", {}).values():
+                for mount in service.get("volumes") or []:
                     if mount.get("type") == "bind":
                         path = Path(mount["source"]).resolve()
                         # config cannot verify bind sources; paths under the deploy

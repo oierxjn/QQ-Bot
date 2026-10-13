@@ -48,14 +48,14 @@
       <section id="form-view" class="editor-layout">
         <aside><h2>服务</h2><div id="service-list"></div></aside>
         <div class="service-editor">
-          <div class="heading"><h2 id="service-title"></h2><span id="protected" class="badge" hidden>受保护</span></div>
+          <div class="heading"><h2 id="service-title"></h2></div>
           <p id="service-hint">环境变量、端口、挂载等字段支持 JSON 列表或对象；留空可删除字段。更复杂的配置可在完整 YAML 中编辑。</p>
           <form id="service-form"><div id="fields"></div><button type="submit" id="update-draft">更新草稿</button></form>
         </div>
       </section>
       <section id="yaml-view" hidden>
         <label for="source">完整 Compose 文档</label>
-        <p class="muted">可编辑其他服务和顶层配置。面板服务、项目名称及面板使用的网络和卷不可修改。</p>
+        <p class="muted">可编辑所有服务和顶层配置。Compose 项目名称不可从网页修改。</p>
         <textarea id="source" spellcheck="false" aria-label="完整 Compose YAML"></textarea>
       </section>
       <details id="diff-panel"><summary>配置差异</summary><pre id="diff">校验后显示差异。</pre></details>

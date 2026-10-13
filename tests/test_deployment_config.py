@@ -31,17 +31,16 @@ def test_form_patch_keeps_comments_unknown_fields_and_environment_style(document
     assert "postgres:19" in result
 
 
-@pytest.mark.parametrize(
-    "source",
-    [
-        SOURCE.replace("panel:1", "panel:2"),
-        SOURCE.replace("state:\n", "state: {external: true}\n"),
-        SOURCE + "name: different\n",
-    ],
-)
-def test_panel_and_project_identity_are_protected(document, source):
+def test_project_name_is_web_immutable(document):
     with pytest.raises(DeploymentError):
-        document.parse(source)
+        document.parse(SOURCE + "name: different\n")
+
+
+def test_services_are_web_editable(document):
+    result = document.patch(SOURCE, "webcontroller", {"image": "panel:2"})
+    assert "panel:2" in result
+    external = SOURCE.replace("state:\n", "state: {external: true}\n")
+    assert document.parse(external)
 
 
 def test_save_conflict_keeps_external_change_and_creates_no_backup(document):
@@ -86,7 +85,7 @@ def test_invalid_yaml_and_path_traversal_are_rejected(document):
 
 
 def test_protection_survives_external_edit_and_restart(document):
-    document.path.write_text(SOURCE.replace("panel:1", "panel:changed"), encoding="utf-8")
+    document.path.write_text(SOURCE + "name: changed\n", encoding="utf-8")
     restarted = ComposeDocument(document.root, document.state)
     with pytest.raises(DeploymentError):
         restarted.parse(restarted.path.read_text(encoding="utf-8"))
@@ -118,10 +117,3 @@ def test_nested_comments_survive_environment_form_edit(document):
     assert "# password comment" in result
     assert "# keep comment" in result
     assert "new-password" in result
-
-
-@pytest.mark.parametrize("field", ["pid", "ipc", "network_mode"])
-def test_implicit_panel_dependency_is_rejected(document, field):
-    source = SOURCE.replace("x-custom: preserved", f"{field}: service:webcontroller")
-    with pytest.raises(DeploymentError):
-        document.parse(source)

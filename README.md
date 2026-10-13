@@ -140,7 +140,7 @@ bash scripts/docker_compose_init.sh
 
 ### WebController 部署面板
 
-源码和 Docker 部署均支持独立面板，提供 Bot TOML 常用表单、文本编辑、校验、备份和恢复。Docker 模式还提供 Compose 表单/YAML 编辑。Docker 部署的面板容器首次启动时自动初始化，初始密码生成于 `.webcontroller/initial-password`；执行 `docker compose up -d webcontroller` 后访问 `http://127.0.0.1:7001`。面板不依赖 QQ 登录或 Bot 启动。
+源码和 Docker 部署均支持部署面板，提供 Bot TOML 常用表单、文本编辑、校验、备份和恢复。Docker 部署还提供 Compose 表单/YAML 编辑：面板随 theresa 容器内的 Bot 进程运行（`THERESA_WEBCONTROLLER=1` 启用），首次启动自动初始化，初始密码生成于 `.webcontroller/initial-password`；执行 `docker compose up -d` 后访问 `http://127.0.0.1:7001`。面板不依赖 QQ 登录或数据库，也不访问 Docker daemon。
 
 已有部署升级、SSH 转发、权限说明与配置恢复见 **[WebController 文档](docs/webcontroller.md)**。
 

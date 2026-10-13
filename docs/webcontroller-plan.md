@@ -1,6 +1,6 @@
 # WebController 设计记录
 
-安装与使用说明见 [webcontroller.md](webcontroller.md)。本文按版本记录设计演变，v3 为当前设计。
+安装与使用说明见 [webcontroller.md](webcontroller.md)。本文按版本记录设计演变，v4 为当前设计。
 
 ## v1：初始设计
 
@@ -22,7 +22,7 @@ v1 用 `THERESA_DEPLOY_DIR` 把部署目录以相同绝对路径挂进面板容�
 
 该方案下 `compose.yaml` 无必填变量，首次部署收敛为一条 `docker compose up -d webcontroller`：服务进程启动时自动初始化（源码模式相同），`setup_webcontroller.sh` 转为宿主机维护命令入口（基于 `docker compose run`），`.env` 身份固定退役，项目名靠容器标签发现，初始密码文件仍落在宿主机 `.webcontroller/initial-password`。约束与风险：仅支持 Linux/WSL Docker Engine（Docker Desktop 的挂载源是 VM 内部路径）；`include`/`extends` 仍不支持；面板的 compose 调用、config 校验、身份校验与 Docker 集成测试需整体重写。v2 已在 feature/webcontroller 分支实施。
 
-## v3：移除 Docker daemon 访问（已实施，当前）
+## v3：移除 Docker daemon 访问（已被 v4 取代）
 
 一键应用此前已移除；2026-10-13 起面板不再挂载或访问 Docker socket，容器状态展示随 daemon 访问一并删除，面板收敛为对 daemon 零访问的配置编辑器：
 
@@ -31,3 +31,13 @@ v1 用 `THERESA_DEPLOY_DIR` 把部署目录以相同绝对路径挂进面板容�
 - 宿主机路径与容器路径的双路径模型坍缩为单一部署目录，`settings.json` 的 `root` 记录面板可见的路径。旧版本的状态记录含宿主机路径，升级后需删除 `.webcontroller/settings.json` 重新初始化，密码和备份保留。
 - 面板镜像保留 Docker CLI 与 Compose 插件，仅用于客户端校验；`compose.yaml` 不再挂载 socket。
 - 验证状态：Windows 全量测试 222 项通过、4 项跳过（Linux Docker 集成与 Chromium 浏览器测试）；集成测试改写为无 socket 场景，待 Linux/WSL 重新运行确认。
+
+## v4：并入 Bot 进程（已实施，当前）
+
+面板镜像没有独立存在的必要：bot 镜像 `COPY . .` 天然包含面板代码与全部依赖，第二个镜像却带来发布、版本对齐与拉取失败问题。daemon 零访问（v3）落地后，此前反对合并的安全顾虑不再成立。方案：
+
+- Bot 入口检测 `THERESA_WEBCONTROLLER=1`，在同一事件循环中以独立 `uvicorn.Server` 启动面板（沿用 WebhookHandler 的模式）；面板异常只记录日志，不拖垮 Bot。`web/deployment/runtime.py` 承载组装逻辑（探测 `/deploy` 挂载判定模式、自动初始化、构建应用），CLI 与进程内共用。
+- compose.yaml 删除 webcontroller 服务；theresa 服务增加 `/deploy` 挂载（`source: .`）、`127.0.0.1:7001:7001` 端口映射和 `THERESA_WEBCONTROLLER: "1"`。`configs/` 同时挂载到 `/app/theresa/configs` 与 `/deploy/configs`，面板配置编辑直接落到 Bot 读取的同一目录。
+- Dockerfile 合并 docker CLI 与 Compose 插件（仅客户端校验）；`Dockerfile.webcontroller`、面板镜像 CI/发布任务删除；`setup_webcontroller.sh` 改为 `docker compose run --entrypoint python3 theresa`。
+- 保护基线收敛为 Compose 项目名：面板所在的服务即 theresa，改动其 env/镜像是正常需求，不再有"面板服务"可保护；服务全部可从网页编辑。
+- Docker 集成测试改为纯宿主机侧（runner 校验 + `up -d --wait` + profiles 行为）；容器内部署流程（theresa 容器内自动初始化、登录、保存）待 Linux/WSL 验证。

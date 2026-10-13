@@ -1,6 +1,6 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
-let csrf = "", version = "", baseline = "", services = {}, selected = "", panel = "webcontroller";
+let csrf = "", version = "", baseline = "", services = {}, selected = "";
 let formOriginal = {}, view = "form", pending = false;
 const labels = {image: "镜像", restart: "重启策略", environment: "环境变量", ports: "端口映射", volumes: "挂载", depends_on: "依赖关系", healthcheck: "健康检查", profiles: "Profiles"};
 const structured = new Set(["environment", "ports", "volumes", "depends_on", "healthcheck", "profiles"]);
@@ -42,14 +42,12 @@ function renderServices() {
 }
 function renderForm() {
   $("fields").replaceChildren(); $("fields").className = "field-grid"; formOriginal = {};
-  const protectedService = selected === panel;
-  $("service-title").textContent = selected; $("protected").hidden = !protectedService;
-  $("update-draft").hidden = protectedService;
+  $("service-title").textContent = selected;
   for (const [key, label] of Object.entries(labels)) {
     const wrapper = document.createElement("div"); wrapper.className = structured.has(key) ? "field wide" : "field";
     const name = document.createElement("label"); name.htmlFor = "field-" + key; name.textContent = label + (structured.has(key) ? "（JSON）" : "");
     const input = document.createElement(structured.has(key) ? "textarea" : "input");
-    input.id = "field-" + key; input.disabled = protectedService;
+    input.id = "field-" + key;
     const value = services[selected]?.[key];
     input.value = value == null ? "" : structured.has(key) ? JSON.stringify(value, null, 2) : String(value);
     formOriginal[key] = input.value;
@@ -57,7 +55,7 @@ function renderForm() {
   }
 }
 async function syncForm() {
-  if (view !== "form" || !formDirty() || selected === panel) return;
+  if (view !== "form" || !formDirty()) return;
   const changes = {};
   for (const key of Object.keys(labels)) {
     const value = $("field-" + key).value;
@@ -81,9 +79,9 @@ async function switchView(next) {
   $("form-tab").setAttribute("aria-pressed", String(next === "form")); $("yaml-tab").setAttribute("aria-pressed", String(next === "yaml"));
 }
 function setDocument(data) {
-  version = data.version; baseline = data.source; services = data.services; panel = data.panel_service;
+  version = data.version; baseline = data.source; services = data.services;
   $("source").value = data.source;
-  if (!services[selected]) selected = Object.keys(services).find((name) => name !== panel) || panel;
+  if (!services[selected]) selected = Object.keys(services)[0];
   renderServices(); renderForm();
   updateState();
 }
