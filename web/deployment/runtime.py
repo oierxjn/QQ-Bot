@@ -96,7 +96,7 @@ async def serve_panel(root, mode, port, stop):
     stop.set()
 
 
-async def supervise_bot(stop, command, cwd, backoff_start=1.0, backoff_cap=30.0, reset_after=60.0):
+async def supervise_bot(stop, command, cwd, backoff_start=1.0, backoff_cap=600.0, reset_after=60.0):
     """Run the Bot as a child process and restart it with exponential backoff.
 
     A child that stayed up for `reset_after` seconds counts as stable and the
