@@ -38,9 +38,7 @@ def test_source_browser_form_text_conflict_restore_and_groups(tmp_path):
         listener.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
     server = uvicorn.Server(
-        uvicorn.Config(
-            build_app(tmp_path, "source"), host="127.0.0.1", port=port, log_level="error"
-        )
+        uvicorn.Config(build_app(tmp_path), host="127.0.0.1", port=port, log_level="error")
     )
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()

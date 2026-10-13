@@ -1,15 +1,17 @@
 """Panel runtime assembly: build the app, auto-initialize, and serve in-process.
 
-The CLI entry and the container share this module. In the container the panel is
-the main process: it serves the web app and supervises the Bot startup chain as
-a child process with restart backoff. The panel and the Bot are decoupled in
-both directions - a panel failure never stops the Bot, and a Bot crash never
-stops the panel. In source deployments the two run independently.
+The panel is always the process that owns the Bot; the deployment shape only
+changes the details. In the container the panel is the main process serving on
+0.0.0.0 and supervising the entrypoint chain; in a source checkout it listens on
+the loopback interface and supervises ``main.py`` directly. The panel and the
+Bot are decoupled in both directions - a panel failure never stops the Bot, and
+a Bot crash never stops the panel.
 """
 
 import asyncio
 import json
 import signal
+import sys
 from pathlib import Path
 
 import uvicorn
@@ -19,7 +21,6 @@ from .app import create_app
 from .config import ComposeDocument
 from .runner import ComposeRunner
 from .setup import (
-    adopt_mode,
     discover_project,
     initialize,
     initialize_source,
@@ -30,25 +31,25 @@ from .toml_config import ConfigStore
 PANEL_DEPLOY_MOUNT = "/deploy"
 
 
-def detect_runtime():
-    """A /deploy bind mount means the Compose deployment; otherwise run on the checkout."""
+def detect_runtime(root=None):
+    """A /deploy bind mount means the Compose deployment; otherwise run on the checkout.
+
+    The mount also fixes the deploy root, so ``root`` only applies to source runs.
+    """
     deploy = Path(PANEL_DEPLOY_MOUNT)
     if deploy.is_dir() and (deploy / "compose.yaml").is_file():
         return deploy.resolve(), "compose"
-    return default_source_root(), "source"
+    return Path(root or default_source_root()).resolve(), "source"
 
 
-def build_app(root, mode):
+def build_app(root):
     root = Path(root).resolve()
+    _, mode = detect_runtime(root)
     state = root / ".webcontroller"
     settings = json.loads((state / "settings.json").read_text(encoding="utf-8"))
     if settings.get("root") != str(root):
         raise RuntimeError(
             f"部署目录与初始化记录不一致：状态记录 {settings.get('root')!r}，当前为 {str(root)!r}"
-        )
-    if settings.get("mode", "compose") != mode:
-        raise RuntimeError(
-            f"初始化模式 {settings.get('mode', 'compose')!r} 与启动模式 {mode!r} 不一致"
         )
     credentials = json.loads((state / "credentials.json").read_text(encoding="utf-8"))
     if mode == "source":
@@ -59,7 +60,7 @@ def build_app(root, mode):
 
 
 def prepare(root, mode):
-    """Auto-initialize on first run or adopt the recorded mode, then build the app."""
+    """Auto-initialize on first run, then build the app."""
     root = Path(root).resolve()
     if not (root / ".webcontroller" / "settings.json").is_file():
         if mode == "source":
@@ -67,16 +68,14 @@ def prepare(root, mode):
         else:
             initialize(root, discover_project(root), None)
         print_initial_password(root)
-    else:
-        adopt_mode(root, mode)
-    return build_app(root, mode)
+    return build_app(root)
 
 
 def _notify(message):
     print(message, flush=True)
 
 
-async def serve_panel(root, mode, port, stop, strict):
+async def serve_panel(root, mode, port, stop):
     """Serve the HTTP panel; `stop` is set only on a clean uvicorn exit (shutdown)."""
     try:
         app = prepare(root, mode)
@@ -92,8 +91,6 @@ async def serve_panel(root, mode, port, stop, strict):
         raise
     except Exception as exc:
         _notify(f"WebController 面板异常退出，Bot 不受影响：{exc}")
-        if strict:
-            raise
         return
     stop.set()
 
@@ -133,11 +130,11 @@ async def supervise_bot(stop, command, cwd, backoff_start=1.0, backoff_cap=30.0)
 async def serve(port=7001, root=None, mode=None):
     """Serve entry for the CLI and the container command.
 
-    关系由部署形态决定，不由配置决定：compose 模式（容器主进程形态）下面板
-    同时拉起并守护 Bot；源码模式下两者独立运行，面板失败即退出。
+    面板始终拉起并守护 Bot：容器里经 entrypoint 链（数据库初始化、QQ 登录等待）
+    跑镜像侧代码，源码检出里直接跑 main.py。
     """
-    if root is None:
-        root, mode = detect_runtime()
+    if root is None or mode is None:
+        root, mode = detect_runtime(root)
     root = Path(root).resolve()
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -148,23 +145,24 @@ async def serve(port=7001, root=None, mode=None):
             loop.add_signal_handler(sig, stop.set)
         except (NotImplementedError, RuntimeError):
             pass
-    # 容器内跑镜像侧代码，入口链含数据库初始化与 QQ 登录等待。
-    command = ["bash", "scripts/entrypoint.sh", "python3", "main.py"]
-    panel = asyncio.create_task(serve_panel(root, mode, port, stop, strict=mode != "compose"))
-    bot = None
     if mode == "compose":
-        bot = asyncio.create_task(supervise_bot(stop, command, default_source_root()))
+        # 容器内跑镜像侧代码，入口链含数据库初始化与 QQ 登录等待。
+        command = ["bash", "scripts/entrypoint.sh", "python3", "main.py"]
+        cwd = default_source_root()
+    else:
+        command = [sys.executable, "main.py"]
+        cwd = root
+    panel = asyncio.create_task(serve_panel(root, mode, port, stop))
+    bot = asyncio.create_task(supervise_bot(stop, command, cwd))
     try:
         await panel
-        if stop.is_set() or bot is None:
+        if stop.is_set():
             return
         # 面板先于停机请求结束（启动失败或崩溃）：Bot 继续运行，直到停机信号。
         await bot
     finally:
         stop.set()
         for task in (panel, bot):
-            if task is not None and not task.done():
+            if not task.done():
                 task.cancel()
-        await asyncio.gather(
-            *(task for task in (panel, bot) if task is not None), return_exceptions=True
-        )
+        await asyncio.gather(panel, bot, return_exceptions=True)

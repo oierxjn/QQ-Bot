@@ -30,13 +30,13 @@ v1 用 `THERESA_DEPLOY_DIR` 把部署目录以相同绝对路径挂进面板容�
 - Compose 项目名改为静态推断：`compose.yaml` 的 `name` → `.env` 的 `COMPOSE_PROJECT_NAME` → 目录名清洗；`--project-name` 可覆盖。
 - 宿主机路径与容器路径的双路径模型坍缩为单一部署目录，`settings.json` 的 `root` 记录面板可见的路径。旧版本的状态记录含宿主机路径，升级后需删除 `.webcontroller/settings.json` 重新初始化，密码和备份保留。
 - 面板镜像保留 Docker CLI 与 Compose 插件，仅用于客户端校验；`compose.yaml` 不再挂载 socket。
-- 验证状态：Windows 全量测试 222 项通过、4 项跳过（Linux Docker 集成与 Chromium 浏览器测试）；集成测试改写为无 socket 场景，待 Linux/WSL 重新运行确认。
+- 验证状态：Windows 全量测试通过（Linux Docker 集成与 Chromium 浏览器测试按环境跳过）；容器内部署流程待 Linux/WSL 验证。
 
 ## v4：面板作为容器主进程（已实施，当前）
 
 面板镜像没有独立存在的必要：bot 镜像 `COPY . .` 天然包含面板代码与全部依赖，第二个镜像却带来发布、版本对齐与拉取失败问题；daemon 零访问（v3）落地后，合并的安全顾虑不再成立。中间方案（Bot 进程内以 task 启动面板）有一个真实缺陷：entrypoint 在拉起 Bot 前会无限等待 QQ 扫码登录，面板要等到登录成功才可用——恰恰是部署最需要面板的阶段。最终方案反转主从：
 
-- 面板是 theresa 容器的主进程（镜像 CMD 为 `python -m web.deployment --mode compose`），先就绪、先可用；以子进程拉起完整启动链（数据库初始化、等待 QQ 登录、`main.py`），退出后按 1 秒起步、封顶 30 秒的退避自动重启。面板与 Bot 的关系由部署形态决定、不经环境变量配置：compose 模式必守护，源码模式必独立（Bot 由用户或 systemd 管理，面板默认拉起会造成双实例）。
+- 面板是 theresa 容器的主进程（镜像 CMD 为 `python -m web.deployment`），先就绪、先可用；以子进程拉起完整启动链（数据库初始化、等待 QQ 登录、`main.py`），退出后按 1 秒起步、封顶 30 秒的退避自动重启。部署形态只经 `/deploy` 挂载探测一次判定（compose 或源码），无 `--mode` 参数、无环境变量开关：两种形态下面板都拉起并守护 Bot，容器经 entrypoint 链，源码直接守护 `main.py` 并替代手动运行。
 - 双向解耦：面板失败（端口占用、状态记录不匹配）只记录日志，Bot 继续运行；Bot 崩溃不影响面板。SIGTERM 由面板转发给子进程；作为 PID 1，面板在 uvicorn 信号捕获之外自行安装信号处理器。
 - `web/deployment/runtime.py` 承载组装与监督（探测 `/deploy` 挂载判定模式、自动初始化、构建应用、子进程守护），CLI 与容器共用。
 - compose.yaml 删除 webcontroller 服务与 entrypoint/command 覆盖；theresa 服务增加 `/deploy` 挂载（`source: .`）和 `127.0.0.1:7001:7001` 端口映射。`configs/` 同时挂载到 `/app/theresa/configs` 与 `/deploy/configs`，面板配置编辑直接落到 Bot 读取的同一目录。

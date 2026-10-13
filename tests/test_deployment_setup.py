@@ -10,7 +10,6 @@ from web.deployment.__main__ import main
 from web.deployment.auth import Authentication
 from web.deployment.config import DeploymentError
 from web.deployment.setup import (
-    adopt_mode,
     discover_project,
     initialize,
     initialize_source,
@@ -34,7 +33,6 @@ def test_initialization_preserves_existing_files_and_credentials(tmp_path):
     assert settings == {
         "root": str(tmp_path.resolve()),
         "project": "existing-project",
-        "mode": "compose",
     }
     with pytest.raises(DeploymentError):
         initialize(tmp_path, "different-project")
@@ -74,13 +72,13 @@ def test_source_main_defaults_to_package_root(tmp_path, monkeypatch):
     configs.mkdir()
     for name in CONFIG_NAMES:
         (configs / f"{name}.template").write_text("", encoding="utf-8")
-    monkeypatch.setattr(sys, "argv", ["web.deployment", "--mode", "source", "--init"])
-    monkeypatch.setattr("web.deployment.__main__.default_source_root", lambda: tmp_path)
+    monkeypatch.setattr(sys, "argv", ["web.deployment", "--init"])
+    monkeypatch.setattr("web.deployment.runtime.default_source_root", lambda: tmp_path)
     main()
     settings = json.loads(
         (tmp_path / ".webcontroller" / "settings.json").read_text(encoding="utf-8")
     )
-    assert settings == {"root": str(tmp_path.resolve()), "mode": "source"}
+    assert settings == {"root": str(tmp_path.resolve())}
     initial = tmp_path / ".webcontroller" / "initial-password"
     assert len(initial.read_text(encoding="utf-8").strip()) >= 12
 
@@ -111,40 +109,6 @@ def test_compose_init_generates_initial_password(tmp_path):
     assert len(initial.read_text(encoding="utf-8").strip()) >= 12
 
 
-def test_adopt_mode_migrates_identity(tmp_path):
-    configs = tmp_path / "configs"
-    configs.mkdir()
-    for name in CONFIG_NAMES:
-        (configs / f"{name}.template").write_text("", encoding="utf-8")
-    (tmp_path / "compose.yaml").write_text(SOURCE + "name: adopted\n", encoding="utf-8")
-    initialize_source(tmp_path, "test-password")
-    credentials = (tmp_path / ".webcontroller" / "credentials.json").read_bytes()
-    adopt_mode(tmp_path, "compose")
-    settings = json.loads(
-        (tmp_path / ".webcontroller" / "settings.json").read_text(encoding="utf-8")
-    )
-    assert settings == {
-        "root": str(tmp_path.resolve()),
-        "project": "adopted",
-        "mode": "compose",
-    }
-    assert (tmp_path / ".webcontroller" / "credentials.json").read_bytes() == credentials
-    adopt_mode(tmp_path, "source")
-    settings = json.loads(
-        (tmp_path / ".webcontroller" / "settings.json").read_text(encoding="utf-8")
-    )
-    assert settings == {"root": str(tmp_path.resolve()), "mode": "source"}
-    elsewhere = tmp_path.parent / "adopt-elsewhere"
-    (elsewhere / ".webcontroller").mkdir(parents=True)
-    (elsewhere / ".webcontroller" / "settings.json").write_text(
-        json.dumps({"root": str(tmp_path.resolve()), "mode": "source"}), encoding="utf-8"
-    )
-    with pytest.raises(DeploymentError):
-        adopt_mode(elsewhere, "source")
-    with pytest.raises(DeploymentError):
-        adopt_mode(tmp_path.parent / "never-initialized", "source")
-
-
 class _ImmediateServer:
     def __init__(self, config):
         pass
@@ -154,17 +118,29 @@ class _ImmediateServer:
 
 
 def test_serve_auto_initializes(tmp_path, monkeypatch):
+    import sys as _sys
+
+    from web.deployment import runtime
+
     configs = tmp_path / "configs"
     configs.mkdir()
     for name in CONFIG_NAMES:
         (configs / f"{name}.template").write_text("", encoding="utf-8")
-    monkeypatch.setattr(
-        sys, "argv", ["web.deployment", "--mode", "source", "--root", str(tmp_path)]
-    )
+    recorded = {}
+
+    async def fake_supervise(stop, command, cwd, **kwargs):
+        recorded["command"] = command
+        recorded["cwd"] = cwd
+        stop.set()
+
+    monkeypatch.setattr(runtime, "supervise_bot", fake_supervise)
     monkeypatch.setattr("web.deployment.runtime.uvicorn.Server", _ImmediateServer)
+    monkeypatch.setattr(_sys, "argv", ["web.deployment", "--root", str(tmp_path)])
     main()
     assert (tmp_path / ".webcontroller" / "settings.json").is_file()
     assert (tmp_path / ".webcontroller" / "initial-password").is_file()
+    assert recorded["command"] == [_sys.executable, "main.py"]
+    assert recorded["cwd"] == tmp_path.resolve()
 
 
 def test_compose_serve_auto_initializes(tmp_path, monkeypatch):
@@ -178,15 +154,17 @@ def test_compose_serve_auto_initializes(tmp_path, monkeypatch):
         pass
 
     monkeypatch.setattr(runtime, "supervise_bot", no_supervise)
-    monkeypatch.setattr(
-        sys, "argv", ["web.deployment", "--mode", "compose", "--root", str(tmp_path)]
-    )
+    monkeypatch.setattr(runtime, "PANEL_DEPLOY_MOUNT", str(tmp_path))
     monkeypatch.setattr("web.deployment.runtime.uvicorn.Server", _ImmediateServer)
+    monkeypatch.setattr(sys, "argv", ["web.deployment"])
     main()
     settings = json.loads(
         (tmp_path / ".webcontroller" / "settings.json").read_text(encoding="utf-8")
     )
-    assert settings["mode"] == "compose"
+    assert settings == {
+        "root": str(tmp_path.resolve()),
+        "project": runtime.discover_project(tmp_path),
+    }
     assert (tmp_path / ".webcontroller" / "initial-password").is_file()
     assert (tmp_path / ".webcontroller" / "protected.json").is_file()
 
@@ -205,35 +183,12 @@ def test_compose_serve_supervises_entrypoint_chain(tmp_path, monkeypatch):
         stop.set()
 
     monkeypatch.setattr(runtime, "supervise_bot", fake_supervise)
+    monkeypatch.setattr(runtime, "PANEL_DEPLOY_MOUNT", str(tmp_path))
     monkeypatch.setattr("web.deployment.runtime.uvicorn.Server", _ImmediateServer)
-    monkeypatch.setattr(
-        sys, "argv", ["web.deployment", "--mode", "compose", "--root", str(tmp_path)]
-    )
+    monkeypatch.setattr(sys, "argv", ["web.deployment"])
     main()
     assert recorded["command"] == ["bash", "scripts/entrypoint.sh", "python3", "main.py"]
     assert recorded["cwd"] == runtime.default_source_root().resolve()
-
-
-def test_source_serve_never_supervises_bot(tmp_path, monkeypatch):
-    import sys
-
-    from web.deployment import runtime
-
-    configs = tmp_path / "configs"
-    configs.mkdir()
-    for name in CONFIG_NAMES:
-        (configs / f"{name}.template").write_text("", encoding="utf-8")
-
-    async def fail_supervise(*args, **kwargs):
-        raise AssertionError("source mode must not supervise the Bot")
-
-    monkeypatch.setattr(runtime, "supervise_bot", fail_supervise)
-    monkeypatch.setattr("web.deployment.runtime.uvicorn.Server", _ImmediateServer)
-    monkeypatch.setattr(
-        sys, "argv", ["web.deployment", "--mode", "source", "--root", str(tmp_path)]
-    )
-    main()
-    assert (tmp_path / ".webcontroller" / "settings.json").is_file()
 
 
 @pytest.mark.asyncio
@@ -284,6 +239,7 @@ def test_detect_runtime_uses_deploy_mount(tmp_path, monkeypatch):
     monkeypatch.setattr(runtime, "PANEL_DEPLOY_MOUNT", str(tmp_path))
     assert runtime.detect_runtime() == (tmp_path.resolve(), "compose")
     monkeypatch.setattr(runtime, "PANEL_DEPLOY_MOUNT", str(tmp_path / "absent"))
+    assert runtime.detect_runtime(str(tmp_path)) == (tmp_path.resolve(), "source")
     root, mode = runtime.detect_runtime()
     assert mode == "source"
     assert (root / "pyproject.toml").is_file()
@@ -319,6 +275,6 @@ def test_cli_flag_validation(monkeypatch):
     with pytest.raises(SystemExit):
         run("--password", "x")
     with pytest.raises(SystemExit):
-        run("--mode", "source", "--init", "--bg")
+        run("--init", "--bg")
     with pytest.raises(SystemExit):
-        run("--mode", "source", "--init", "--reset-password")
+        run("--init", "--reset-password")

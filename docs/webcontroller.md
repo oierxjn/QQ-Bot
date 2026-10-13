@@ -1,6 +1,6 @@
 # 部署面板（WebController）
 
-面板不依赖 QQ 登录和数据库。面板与 Bot 的关系由部署形态决定，不需要配置：Docker 部署中面板是容器的主进程，拉起并守护 Bot——面板先启动、先可用，Bot 崩溃后自动退避重启，面板自身异常只记录日志、不影响 Bot，停止信号由面板转发给 Bot；源码部署中两者独立运行，互不干预。两种方式均提供 TOML 配置管理、校验、差异及备份恢复；Docker 部署另外提供 Compose 表单/YAML 编辑。面板不挂载 Docker socket，对 Docker daemon 零访问：不显示容器运行状态，也不执行任何容器操作。
+面板不依赖 QQ 登录和数据库，并且始终是拉起 Bot 的一方：面板先启动、先可用，Bot 作为其子进程运行，崩溃后自动退避重启；面板自身异常只记录日志、不影响 Bot，停止信号由面板转发给 Bot。Docker 部署中面板是容器的主进程，经启动链（数据库初始化、等待 QQ 登录）拉起 Bot；源码部署中面板直接拉起 `main.py`，替代手动运行 Bot。两种方式均提供 TOML 配置管理、校验、差异及备份恢复；Docker 部署另外提供 Compose 表单/YAML 编辑。面板不挂载 Docker socket，对 Docker daemon 零访问：不显示容器运行状态，也不执行任何容器操作。
 
 ## 纯源码部署（Windows / Linux）
 
@@ -8,21 +8,21 @@
 
 ```bash
 uv sync --no-dev
-uv run -m web.deployment --mode source
+uv run -m web.deployment
 ```
 
-首次运行自动初始化并启动服务；也可先执行 `uv run -m web.deployment --mode source --init` 只初始化不启动。
+这一条命令会启动面板（自动初始化）并由它拉起 Bot；无需再运行 `main.py`。也可先执行 `uv run -m web.deployment --init` 只初始化不启动。
 
 初始化自动生成随机管理员密码，写入 `.webcontroller/initial-password`（仅当前用户可读），终端只提示文件路径，不显示密码内容；首次成功登录后面板自动删除该文件，请尽快用 `--reset-password` 设置自己的密码。也可在 `--init` 或 `--reset-password` 时用 `--password` 非交互指定密码，此时不生成密码文件。密码长度不限制，仅以 scrypt 哈希存储，强度由使用者自行负责。初始化从 `configs/*.toml.template` 补齐五类缺失配置，不覆盖已有文件；重复执行保留密码。设置与密码哈希存放于 `.webcontroller/`，不写入 `.env`。
 
-同一目录可随时在两种模式间切换：启动时会自动把状态目录的模式记录改写为当前模式，密码和备份保留；只有部署目录或 Compose 项目名与状态记录不同才拒绝。建议同一时间只保留一个面板实例，两侧同时编辑同一批配置时由版本检查兜底。
+建议同一时间只保留一个面板实例，两侧同时编辑同一批配置时由版本检查兜底。
 
-默认监听 `127.0.0.1:7001`，可使用 `--port 7002` 指定其他端口。可用 `--bg` 以后台进程运行（`--mode source --bg`），PID 与日志分别记录在 `.webcontroller/panel.pid`、`panel.log`，用 `--mode source --stop` 停止；长期运行仍建议使用下文的 systemd 服务。远程访问使用下文的 SSH 转发。旧 Bot 配置中的 `web_controller_address` 不控制独立面板，仍保留以兼容 Bot 配置加载。
+默认监听 `127.0.0.1:7001`，可使用 `--port 7002` 指定其他端口。可用 `--bg` 以后台进程运行（`--bg`），PID 与日志分别记录在 `.webcontroller/panel.pid`、`panel.log`，用 `--stop` 停止（面板与 Bot 一同停止）；长期运行仍建议使用下文的 systemd 服务，一个服务即可同时守护面板和 Bot。远程访问使用下文的 SSH 转发。旧 Bot 配置中的 `web_controller_address` 不控制独立面板，仍保留以兼容 Bot 配置加载。
 
-面板与 `uv run main.py` 分开运行。面板不会启动、停止或自动重启 Bot，也不执行数据库初始化。忘记密码时执行：
+忘记密码时执行：
 
 ```bash
-uv run -m web.deployment --mode source --reset-password
+uv run -m web.deployment --reset-password
 ```
 
 重启面板后使用新密码登录。Linux 状态目录与文件限制为当前用户访问；Windows 使用用户目录的 Windows ACL，请将项目放在可信用户目录内，不与不可信用户共享配置和备份。
@@ -37,7 +37,7 @@ After=network.target
 [Service]
 User=your-user
 WorkingDirectory=/home/your-user/QQ-Bot
-ExecStart=/home/your-user/.local/bin/uv run --frozen --no-dev -m web.deployment --mode source
+ExecStart=/home/your-user/.local/bin/uv run --frozen --no-dev -m web.deployment
 Restart=on-failure
 UMask=0077
 
@@ -49,13 +49,13 @@ WantedBy=multi-user.target
 
 ## Bot TOML 配置管理（两种部署共用）
 
-两种部署共用同一套 Bot TOML 管理。源码模式下面板只有这一部分；Docker 模式下面板另有 Compose 部署页，通过页签切换到“Bot 配置”。只允许管理 `bot.toml`、`plugins.toml`、`groups.toml`、`ai.toml`、`scheduler.toml`，不能编辑任意宿主机文件。
+两种部署共用同一套 Bot TOML 管理。源码部署下面板只有这一部分；Docker 部署下面板另有 Compose 部署页，通过页签切换到“Bot 配置”。只允许管理 `bot.toml`、`plugins.toml`、`groups.toml`、`ai.toml`、`scheduler.toml`，不能编辑任意宿主机文件。
 
 Bot 基础配置提供表单，密码和令牌默认遮蔽；插件提供全局启用开关，群聊提供群配置增删与插件开关。复杂参数、AI 与定时任务使用完整 TOML。表单与文本共享草稿，保留注释和未知字段。缺失或语法错误的配置可以通过完整 TOML 修复；切换文件和重新读取前会提示未保存草稿。
 
 校验覆盖 TOML 语法、Bot 必需字段及类型、地址端口、插件/群聊开关和基本配置表结构，不导入插件或测试外部连接，不保证所有插件自定义参数均有效。配置版本冲突会拒绝覆盖。保存和恢复前备份当前文件，并原子替换；备份按文件存于 `.webcontroller/config-backups/`，与 Compose 备份隔离。无效原始文件也会保留备份，但恢复时仍必须通过校验。
 
-**保存只写入磁盘，页面不确认运行中的 Bot 已加载新配置。** 源码部署手动重启 Bot；Docker 部署使用 `docker compose restart theresa`。多个文件分别保存，不提供跨文件事务。Compose 保存/恢复期间拒绝 TOML 保存/恢复；两侧的修改都不会自动触发容器操作。
+**保存只写入磁盘，页面不确认运行中的 Bot 已加载新配置。** 源码部署重启面板（`--stop` 后重新运行，Bot 一并重启）；Docker 部署使用 `docker compose restart theresa`。多个文件分别保存，不提供跨文件事务。Compose 保存/恢复期间拒绝 TOML 保存/恢复；两侧的修改都不会自动触发容器操作。
 
 完整 TOML、差异、下载及备份可能含密码或 API Key，仅向已登录管理员开放。修改监听端口需手动同步 LLBot；数据库配置修改不会修改现有数据库账号密码。
 
@@ -166,6 +166,6 @@ RUN_WEB_DOCKER_TESTS=1 uv run pytest tests/test_deployment_docker.py
 
 如果测试进程本身也在 Linux 容器中运行，需要挂载 Docker socket、将测试目录以相同绝对路径挂载，并使用 `--network host`。
 
-更早版本的验证记录（2026-10-06 前后）针对含一键应用、容器状态与 Docker socket 的设计，相关结论不再逐条适用。当前版本（面板为容器主进程并守护 Bot、无独立面板镜像）在 Windows 运行全量测试：224 项通过，3 项跳过——1 项 Linux Docker 集成测试因本机缺少 Docker Engine，2 项 Chromium 浏览器测试未启用；theresa 容器内部署流程（面板拉起启动链、自动初始化、登录、保存）需在 Linux/WSL 验证。
+更早版本的验证记录（2026-10-06 前后）针对含一键应用、容器状态与 Docker socket 的设计，相关结论不再逐条适用。当前版本（面板为容器主进程并守护 Bot、无独立面板镜像）在 Windows 运行全量测试：222 项通过，3 项跳过——1 项 Linux Docker 集成测试因本机缺少 Docker Engine，2 项 Chromium 浏览器测试未启用；theresa 容器内部署流程（面板拉起启动链、自动初始化、登录、保存）需在 Linux/WSL 验证。
 
 实现依据：[Compose config](https://docs.docker.com/reference/cli/docker/compose/config/)、[Profiles](https://docs.docker.com/compose/how-tos/profiles/)、[项目名称](https://docs.docker.com/compose/how-tos/project-name/)。

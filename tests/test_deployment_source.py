@@ -30,7 +30,7 @@ def test_source_init_without_docker_preserves_existing(source_root):
         initialize_source(source_root, "test-password")
         credentials = (source_root / ".webcontroller/credentials.json").read_bytes()
         initialize_source(source_root)
-        app = build_app(source_root, "source")
+        app = build_app(source_root)
     assert existing.read_text(encoding="utf-8") == "broken["
     assert (source_root / ".webcontroller/credentials.json").read_bytes() == credentials
     assert not (source_root / ".env").exists()
@@ -62,19 +62,17 @@ def test_source_init_without_docker_preserves_existing(source_root):
         )
 
 
-def test_mode_conflict(source_root):
+def test_identity_mismatch_and_init_preserves_state(source_root):
     initialize_source(source_root, "test-password")
-    with pytest.raises(RuntimeError):
-        build_app(source_root, "compose")
     settings = source_root / ".webcontroller/settings.json"
-    settings.write_text(
-        json.dumps({"root": str(source_root.resolve()), "project": "test"}), encoding="utf-8"
-    )
+    settings.write_text(json.dumps({"root": "C:/elsewhere"}), encoding="utf-8")
+    with pytest.raises(RuntimeError):
+        build_app(source_root)
+    settings.write_text(json.dumps({"root": str(source_root.resolve())}), encoding="utf-8")
     credentials = (source_root / ".webcontroller/credentials.json").read_bytes()
     initialize_source(source_root)
     assert json.loads(settings.read_text(encoding="utf-8")) == {
         "root": str(source_root.resolve()),
-        "mode": "source",
     }
     assert (source_root / ".webcontroller/credentials.json").read_bytes() == credentials
     with pytest.raises(DeploymentError):
@@ -98,8 +96,6 @@ def test_source_cli_serves_without_compose(source_root):
             sys.executable,
             "-m",
             "web.deployment",
-            "--mode",
-            "source",
             "--root",
             str(source_root),
             "--port",
@@ -140,7 +136,7 @@ def test_source_cli_background_start_and_stop(source_root):
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
         port = listener.getsockname()[1]
-    child = start_background(source_root.resolve(), "source", port)
+    child = start_background(source_root.resolve(), port)
     record = source_root / ".webcontroller" / "panel.pid"
     try:
         deadline = time.monotonic() + 15
@@ -173,7 +169,7 @@ def test_background_refuses_duplicate_and_cleans_stale(source_root):
     record = source_root / ".webcontroller" / "panel.pid"
     record.write_text(str(os.getpid()) + "\n", encoding="utf-8")
     with pytest.raises(SystemExit):
-        start_background(source_root.resolve(), "source", 7001)
+        start_background(source_root.resolve(), 7001)
     record.write_text("2000000000\n", encoding="utf-8")
     stop_background(source_root.resolve())
     assert not record.exists()

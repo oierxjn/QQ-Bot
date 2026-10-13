@@ -93,21 +93,15 @@ cp configs/scheduler.toml.template configs/scheduler.toml
 uv run scripts/create_tables.py
 ```
 
-#### 5. 启动 bot
+#### 5. 启动 Bot
 
-源码部署也支持独立 WebController。完成 `uv sync --no-dev` 后，运行面板即可自动初始化，通过浏览器编辑五类 TOML 配置；面板不需要 Docker，也不依赖 Bot、QQ 登录或数据库连接：
-
-```bash
-uv run -m web.deployment --mode source
-```
-
-初始化自动生成随机管理员密码，存于 `.webcontroller/initial-password`，首次成功登录后自动删除；同时只从模板补齐缺失文件，不覆盖已有配置。访问 `http://127.0.0.1:7001`，保存配置后手动重启 Bot。面板和 Bot 在不同终端或独立服务中运行，面板可用 `--bg` 后台运行、`--stop` 停止。Windows 和 Linux 均支持，更多启动、密码重置及后台运行说明见 [WebController 文档](docs/webcontroller.md)。
+完成 `uv sync --no-dev` 后，运行部署面板即可自动初始化，并通过浏览器编辑五类 TOML 配置；面板不需要 Docker，也不依赖 QQ 登录或数据库连接。面板会拉起并守护 Bot，无需单独运行 `main.py`：
 
 ```bash
-uv run main.py
+uv run -m web.deployment
 ```
 
-> 与 LLBot 类似，长期运行建议编写 systemd 服务脚本
+初始化自动生成随机管理员密码，存于 `.webcontroller/initial-password`，首次成功登录后自动删除；同时只从模板补齐缺失文件，不覆盖已有配置。访问 `http://127.0.0.1:7001`。面板可用 `--bg` 后台运行、`--stop` 停止（面板与 Bot 一同停止）；长期运行建议编写 systemd 服务脚本，一个服务即可同时守护面板和 Bot。Windows 和 Linux 均支持，更多启动、密码重置及后台运行说明见 [WebController 文档](docs/webcontroller.md)。
 
 > 如果你想为 `src/Api.py` 添加尚未实现在该项目中的 LLBot api，请参考 [LLBot api 文档](https://llonebot.apifox.cn/)
 

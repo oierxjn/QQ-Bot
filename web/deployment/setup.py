@@ -13,7 +13,7 @@ from .toml_config import CONFIG_NAMES, ConfigStore
 def initialize_source(root: Path, password=None):
     root = root.resolve()
     state = root / ".webcontroller"
-    settings = {"root": str(root), "mode": "source"}
+    settings = {"root": str(root)}
     settings_path = state / "settings.json"
     if settings_path.exists():
         existing = json.loads(settings_path.read_text(encoding="utf-8"))
@@ -75,7 +75,7 @@ def initialize(root: Path, project: str, password=None):
     root = root.resolve()
     state = root / ".webcontroller"
     settings_path = state / "settings.json"
-    settings = {"root": str(root), "project": project, "mode": "compose"}
+    settings = {"root": str(root), "project": project}
     if settings_path.exists():
         existing = json.loads(settings_path.read_text(encoding="utf-8"))
         if existing.get("root") != str(root):
@@ -99,28 +99,6 @@ def initialize(root: Path, project: str, password=None):
         directory.mkdir(exist_ok=True, mode=0o700)
         directory.chmod(0o700)
     return document
-
-
-def adopt_mode(root: Path, mode: str):
-    """Adopt the startup mode when the deploy root matches, keeping credentials and backups."""
-    root = root.resolve()
-    path = root / ".webcontroller" / "settings.json"
-    if not path.is_file():
-        raise DeploymentError("面板尚未初始化，状态目录缺少 settings.json")
-    settings = json.loads(path.read_text(encoding="utf-8"))
-    if settings.get("root") != str(root):
-        raise DeploymentError(
-            f"状态目录记录的部署目录为 {settings.get('root')!r}，与当前 {str(root)!r} 不同"
-        )
-    if settings.get("mode", "compose") == mode:
-        return
-    if mode == "compose":
-        settings["project"] = discover_project(root)
-        settings["mode"] = "compose"
-    else:
-        settings.pop("project", None)
-        settings["mode"] = "source"
-    atomic_write(path, json.dumps(settings))
 
 
 def print_initial_password(root: Path):

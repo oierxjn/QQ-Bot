@@ -9,10 +9,9 @@ import sys
 import time
 from pathlib import Path
 
-from . import default_source_root
 from .auth import create_credentials
 from .config import ComposeDocument, DeploymentError, atomic_write
-from .runtime import PANEL_DEPLOY_MOUNT, serve
+from .runtime import detect_runtime, serve
 from .setup import discover_project, initialize, initialize_source, print_initial_password
 
 
@@ -42,7 +41,7 @@ def pid_record(root):
     return root / ".webcontroller" / "panel.pid"
 
 
-def start_background(root, mode, port):
+def start_background(root, port):
     state = root / ".webcontroller"
     if not state.is_dir():
         raise SystemExit("状态目录不存在，请先执行 --init 初始化")
@@ -57,8 +56,6 @@ def start_background(root, mode, port):
         sys.executable,
         "-m",
         "web.deployment",
-        "--mode",
-        mode,
         "--root",
         str(root),
         "--port",
@@ -84,7 +81,7 @@ def start_background(root, mode, port):
         raise SystemExit(f"后台面板启动失败，请查看日志：{log_path}")
     print(f"面板已在后台运行（PID {child.pid}）")
     print(f"日志：{log_path}")
-    print(f"停止：uv run -m web.deployment --mode {mode} --stop")
+    print("停止：uv run -m web.deployment --stop")
     print_initial_password(root)
     return child
 
@@ -120,8 +117,8 @@ def prompt_password(text, explicit):
     return password
 
 
-def run_setup(root, args, parser):
-    if args.mode == "source":
+def run_setup(root, mode, args, parser):
+    if mode == "source":
         if args.accept_panel_upgrade or args.project_name:
             parser.error("源码模式不接受 Compose 维护参数")
         if args.reset_password:
@@ -141,7 +138,7 @@ def run_setup(root, args, parser):
             print("管理员密码已重置，重启面板后使用新密码登录")
             return
         initialize_source(root, args.password)
-        print("源码面板初始化完成，执行 uv run -m web.deployment --mode source")
+        print("源码面板初始化完成，执行 uv run -m web.deployment 启动面板和 Bot")
         print_initial_password(root)
         return
     project = discover_project(root, args.project_name)
@@ -178,9 +175,8 @@ def run_setup(root, args, parser):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="独立 WebController 配置面板")
-    parser.add_argument("--mode", choices=("source", "compose"), default="compose")
-    parser.add_argument("--root", type=Path)
+    parser = argparse.ArgumentParser(description="Theresa 部署面板：面板拉起并守护 Bot")
+    parser.add_argument("--root", type=Path, help="源码模式的检出目录，默认取包所在仓库")
     parser.add_argument("--port", type=int, default=7001)
     parser.add_argument("--bg", action="store_true", help="以后台进程运行，日志写入状态目录")
     parser.add_argument("--stop", action="store_true", help="停止后台运行的面板")
@@ -201,28 +197,25 @@ def main():
         parser.error("--password 需要与 --init 或 --reset-password 搭配")
     if not 1 <= args.port <= 65535:
         parser.error("端口必须在 1 到 65535 之间")
-    if args.mode == "source":
-        root = (args.root or default_source_root()).resolve()
-    else:
-        root = (args.root or Path(PANEL_DEPLOY_MOUNT)).resolve()
+    root, mode = detect_runtime(args.root)
     if args.stop:
         stop_background(root)
         return
-    if args.mode == "compose" and not root.is_dir():
+    if mode == "compose" and not root.is_dir():
         raise SystemExit(
-            f"部署目录不存在：{root}。compose 模式默认使用容器的 {PANEL_DEPLOY_MOUNT} 挂载，"
-            "也可用 --root 指定部署目录"
+            f"部署目录不存在：{root}。容器部署默认使用 /deploy 挂载，"
+            "源码部署可用 --root 指定检出目录"
         )
     if args.bg:
-        start_background(root, args.mode, args.port)
+        start_background(root, args.port)
         return
     if setup_mode:
-        run_setup(root, args, parser)
+        run_setup(root, mode, args, parser)
         return
     try:
-        asyncio.run(serve(args.port, root, args.mode))
+        asyncio.run(serve(args.port, root, mode))
     except DeploymentError as exc:
-        raise SystemExit(f"初始化或模式切换失败：{exc}") from None
+        raise SystemExit(f"初始化失败：{exc}") from None
 
 
 if __name__ == "__main__":
