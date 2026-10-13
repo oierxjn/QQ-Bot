@@ -101,7 +101,7 @@ uv run scripts/create_tables.py
 uv run -m web.deployment --mode source
 ```
 
-初始化自动生成随机管理员密码，存于 `.webcontroller/initial-password`，首次成功登录后自动删除；同时只从模板补齐缺失文件，不覆盖已有配置。访问 `http://127.0.0.1:7001`，保存配置后手动重启 Bot。面板和 Bot 默认在不同终端或独立服务中运行，面板可用 `--bg` 后台运行、`--stop` 停止；设置 `THERESA_BOT=1` 则由面板拉起并守护 Bot（与 Docker 部署同机制），无需单独运行 `main.py`。Windows 和 Linux 均支持，更多启动、密码重置及后台运行说明见 [WebController 文档](docs/webcontroller.md)。
+初始化自动生成随机管理员密码，存于 `.webcontroller/initial-password`，首次成功登录后自动删除；同时只从模板补齐缺失文件，不覆盖已有配置。访问 `http://127.0.0.1:7001`，保存配置后手动重启 Bot。面板和 Bot 在不同终端或独立服务中运行，面板可用 `--bg` 后台运行、`--stop` 停止。Windows 和 Linux 均支持，更多启动、密码重置及后台运行说明见 [WebController 文档](docs/webcontroller.md)。
 
 ```bash
 uv run main.py
@@ -140,7 +140,7 @@ bash scripts/docker_compose_init.sh
 
 ### WebController 部署面板
 
-源码和 Docker 部署均支持部署面板，提供 Bot TOML 常用表单、文本编辑、校验、备份和恢复。Docker 部署还提供 Compose 表单/YAML 编辑：面板是 theresa 容器的主进程，负责拉起并守护 Bot（`THERESA_BOT=1`），面板先就绪，QQ 未登录或 Bot 崩溃时仍可访问。首次启动自动初始化，初始密码生成于 `.webcontroller/initial-password`；执行 `docker compose up -d` 后访问 `http://127.0.0.1:7001`。面板不依赖 QQ 登录或数据库，也不访问 Docker daemon。
+源码和 Docker 部署均支持部署面板，提供 Bot TOML 常用表单、文本编辑、校验、备份和恢复。Docker 部署还提供 Compose 表单/YAML 编辑：面板是 theresa 容器的主进程，负责拉起并守护 Bot，面板先就绪，QQ 未登录或 Bot 崩溃时仍可访问。首次启动自动初始化，初始密码生成于 `.webcontroller/initial-password`；执行 `docker compose up -d` 后访问 `http://127.0.0.1:7001`。面板不依赖 QQ 登录或数据库，也不访问 Docker daemon。
 
 已有部署升级、SSH 转发、权限说明与配置恢复见 **[WebController 文档](docs/webcontroller.md)**。
 

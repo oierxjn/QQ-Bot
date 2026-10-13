@@ -168,7 +168,16 @@ def test_serve_auto_initializes(tmp_path, monkeypatch):
 
 
 def test_compose_serve_auto_initializes(tmp_path, monkeypatch):
+    import sys
+
+    from web.deployment import runtime
+
     (tmp_path / "compose.yaml").write_text(SOURCE, encoding="utf-8")
+
+    async def no_supervise(*args, **kwargs):
+        pass
+
+    monkeypatch.setattr(runtime, "supervise_bot", no_supervise)
     monkeypatch.setattr(
         sys, "argv", ["web.deployment", "--mode", "compose", "--root", str(tmp_path)]
     )
@@ -182,7 +191,30 @@ def test_compose_serve_auto_initializes(tmp_path, monkeypatch):
     assert (tmp_path / ".webcontroller" / "protected.json").is_file()
 
 
-def test_source_serve_can_supervise_bot(tmp_path, monkeypatch):
+def test_compose_serve_supervises_entrypoint_chain(tmp_path, monkeypatch):
+    import sys
+
+    from web.deployment import runtime
+
+    (tmp_path / "compose.yaml").write_text(SOURCE, encoding="utf-8")
+    recorded = {}
+
+    async def fake_supervise(stop, command, cwd, **kwargs):
+        recorded["command"] = command
+        recorded["cwd"] = cwd
+        stop.set()
+
+    monkeypatch.setattr(runtime, "supervise_bot", fake_supervise)
+    monkeypatch.setattr("web.deployment.runtime.uvicorn.Server", _ImmediateServer)
+    monkeypatch.setattr(
+        sys, "argv", ["web.deployment", "--mode", "compose", "--root", str(tmp_path)]
+    )
+    main()
+    assert recorded["command"] == ["bash", "scripts/entrypoint.sh", "python3", "main.py"]
+    assert recorded["cwd"] == runtime.default_source_root().resolve()
+
+
+def test_source_serve_never_supervises_bot(tmp_path, monkeypatch):
     import sys
 
     from web.deployment import runtime
@@ -191,22 +223,17 @@ def test_source_serve_can_supervise_bot(tmp_path, monkeypatch):
     configs.mkdir()
     for name in CONFIG_NAMES:
         (configs / f"{name}.template").write_text("", encoding="utf-8")
-    recorded = {}
 
-    async def fake_supervise(stop, command, cwd, **kwargs):
-        recorded["command"] = command
-        recorded["cwd"] = cwd
-        stop.set()
+    async def fail_supervise(*args, **kwargs):
+        raise AssertionError("source mode must not supervise the Bot")
 
-    monkeypatch.setenv("THERESA_BOT", "1")
-    monkeypatch.setattr(runtime, "supervise_bot", fake_supervise)
+    monkeypatch.setattr(runtime, "supervise_bot", fail_supervise)
     monkeypatch.setattr("web.deployment.runtime.uvicorn.Server", _ImmediateServer)
     monkeypatch.setattr(
         sys, "argv", ["web.deployment", "--mode", "source", "--root", str(tmp_path)]
     )
     main()
-    assert recorded["command"] == [sys.executable, "main.py"]
-    assert recorded["cwd"] == tmp_path.resolve()
+    assert (tmp_path / ".webcontroller" / "settings.json").is_file()
 
 
 @pytest.mark.asyncio

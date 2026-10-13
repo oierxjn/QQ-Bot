@@ -1,17 +1,15 @@
 """Panel runtime assembly: build the app, auto-initialize, and serve in-process.
 
 The CLI entry and the container share this module. In the container the panel is
-the main process: it serves the web app and, when THERESA_BOT=1, supervises the
-Bot startup chain as a child process with restart backoff. The panel and the Bot
-are decoupled in both directions - a panel failure never stops the Bot, and a
-Bot crash never stops the panel.
+the main process: it serves the web app and supervises the Bot startup chain as
+a child process with restart backoff. The panel and the Bot are decoupled in
+both directions - a panel failure never stops the Bot, and a Bot crash never
+stops the panel. In source deployments the two run independently.
 """
 
 import asyncio
 import json
-import os
 import signal
-import sys
 from pathlib import Path
 
 import uvicorn
@@ -135,17 +133,12 @@ async def supervise_bot(stop, command, cwd, backoff_start=1.0, backoff_cap=30.0)
 async def serve(port=7001, root=None, mode=None):
     """Serve entry for the CLI and the container command.
 
-    THERESA_BOT=1 让面板拉起并守护 Bot 子进程，两种部署方式机制相同；
-    容器在 compose.yaml 中显式开启，源码部署默认关闭（Bot 常由 systemd 单独守护）。
-    THERESA_WEBCONTROLLER=0 关闭面板 HTTP 服务（仅拉起 Bot 的形态）。
+    关系由部署形态决定，不由配置决定：compose 模式（容器主进程形态）下面板
+    同时拉起并守护 Bot；源码模式下两者独立运行，面板失败即退出。
     """
     if root is None:
         root, mode = detect_runtime()
     root = Path(root).resolve()
-    bot_enabled = os.environ.get("THERESA_BOT") == "1"
-    panel_enabled = os.environ.get("THERESA_WEBCONTROLLER", "1") != "0"
-    if not panel_enabled and not bot_enabled:
-        raise SystemExit("THERESA_WEBCONTROLLER 与 THERESA_BOT 均未启用，没有可运行的服务")
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -155,21 +148,14 @@ async def serve(port=7001, root=None, mode=None):
             loop.add_signal_handler(sig, stop.set)
         except (NotImplementedError, RuntimeError):
             pass
-    panel = bot = None
-    if panel_enabled:
-        panel = asyncio.create_task(serve_panel(root, mode, port, stop, strict=not bot_enabled))
-    if bot_enabled:
-        if mode == "compose":
-            # 容器内跑镜像侧代码，入口链含数据库初始化与 QQ 登录等待。
-            command = ["bash", "scripts/entrypoint.sh", "python3", "main.py"]
-            cwd = default_source_root()
-        else:
-            command = [sys.executable, "main.py"]
-            cwd = root
-        bot = asyncio.create_task(supervise_bot(stop, command, cwd))
+    # 容器内跑镜像侧代码，入口链含数据库初始化与 QQ 登录等待。
+    command = ["bash", "scripts/entrypoint.sh", "python3", "main.py"]
+    panel = asyncio.create_task(serve_panel(root, mode, port, stop, strict=mode != "compose"))
+    bot = None
+    if mode == "compose":
+        bot = asyncio.create_task(supervise_bot(stop, command, default_source_root()))
     try:
-        if panel is not None:
-            await panel
+        await panel
         if stop.is_set() or bot is None:
             return
         # 面板先于停机请求结束（启动失败或崩溃）：Bot 继续运行，直到停机信号。

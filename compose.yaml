@@ -56,8 +56,6 @@ services:
         image: heai/theresa:latest
         ports:
             - "127.0.0.1:7001:7001"
-        environment:
-            THERESA_BOT: "1"
         volumes:
             - type: bind
               source: .
