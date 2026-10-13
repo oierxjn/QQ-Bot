@@ -1,6 +1,6 @@
 # 部署面板（WebController）
 
-面板不依赖 QQ 登录和数据库。源码部署中它与 Bot 分开运行；Docker 部署中它随 Bot 进程运行（由 `THERESA_WEBCONTROLLER=1` 启用；面板自身的异常只记录日志，不会拖垮 Bot，Bot 进程退出时两者随容器一起重启）。两种方式均提供 TOML 配置管理、校验、差异及备份恢复；Docker 部署另外提供 Compose 表单/YAML 编辑。面板不挂载 Docker socket，对 Docker daemon 零访问：不显示容器运行状态，也不执行任何容器操作。
+面板不依赖 QQ 登录和数据库。源码部署中它与 Bot 分开运行；Docker 部署中面板是容器的主进程，Bot 由它拉起并守护（`THERESA_BOT=1`）：面板先启动、先可用，Bot 崩溃后自动退避重启，面板自身异常只记录日志、不影响 Bot，`docker compose stop` 的停止信号由面板转发给 Bot。两种方式均提供 TOML 配置管理、校验、差异及备份恢复；Docker 部署另外提供 Compose 表单/YAML 编辑。面板不挂载 Docker socket，对 Docker daemon 零访问：不显示容器运行状态，也不执行任何容器操作。
 
 ## 纯源码部署（Windows / Linux）
 
@@ -69,7 +69,7 @@ Bot 基础配置提供表单，密码和令牌默认遮蔽；插件提供全局�
 docker compose up -d
 ```
 
-面板随 theresa 服务启动：compose.yaml 中的 `THERESA_WEBCONTROLLER=1` 打开面板，部署目录以 `source: .` 挂载到容器内固定路径 `/deploy`，端口映射为 `127.0.0.1:7001:7001`。首次启动自动初始化，初始面板密码生成于宿主机的 `.webcontroller/initial-password`，首次成功登录后自动删除；与 LLBot WebUI 密码独立。面板进程与 Bot 在同一容器、同一事件循环中运行，不使用 Docker socket，`compose.yaml` 不需要任何部署目录变量。
+面板是 theresa 容器的主进程：容器启动后面板先就绪，再以子进程拉起原启动链（数据库初始化、等待 QQ 登录、`main.py`）。部署目录以 `source: .` 挂载到容器内固定路径 `/deploy`，端口映射为 `127.0.0.1:7001:7001`，`THERESA_BOT=1` 打开 Bot 守护。首次启动自动初始化，初始面板密码生成于宿主机的 `.webcontroller/initial-password`，首次成功登录后自动删除；与 LLBot WebUI 密码独立。Bot 崩溃后面板按 1 秒起步、封顶 30 秒的退避自动重启；等待 QQ 扫码期间面板照常可用。面板不使用 Docker socket，`compose.yaml` 不需要任何部署目录变量。
 
 访问 `http://127.0.0.1:7001`。远程服务器使用 SSH 转发：
 
@@ -81,9 +81,11 @@ ssh -L 7001:127.0.0.1:7001 user@server
 
 **面板对 Docker daemon 零访问。** 校验只执行 `docker compose config` 等客户端操作，不读取容器状态、不启停容器；容器更新和状态查询都在宿主机执行。仍不要将端口绑定到公网，面板没有公开注册入口。
 
+两个环境变量控制容器内的运行形态：`THERESA_BOT=0` 只运行面板、不拉起 Bot（修复配置时避免 Bot 反复崩溃重启）；`THERESA_WEBCONTROLLER=0` 不启动面板 HTTP 服务、只守护 Bot。两者同时关闭时容器直接退出。
+
 ## 已有部署升级
 
-不要重新执行 `docker_compose_init.sh`，它用于首次初始化。保留当前 `compose.yaml` 与配置，拉取新版镜像，并在 `theresa` 服务中加入面板所需的三项：`127.0.0.1:7001:7001` 端口映射、`source: .` 到 `/deploy` 的挂载、`THERESA_WEBCONTROLLER: "1"` 环境变量，然后执行：
+不要重新执行 `docker_compose_init.sh`，它用于首次初始化。保留当前 `compose.yaml` 与配置，拉取新版镜像，并在 `theresa` 服务中加入面板所需的三项：`127.0.0.1:7001:7001` 端口映射、`source: .` 到 `/deploy` 的挂载、`THERESA_BOT: "1"` 环境变量，然后执行：
 
 ```bash
 docker compose up -d
@@ -115,7 +117,7 @@ Compose、Bot TOML、LLBot JSON 暂不联动。修改监听端口后要同步检
 
 页面中预览备份并确认恢复；恢复当前配置前也会自动备份。恢复只替换配置文件，不回滚数据库、卷数据或容器状态。
 
-Compose 项目名称不能从网页修改。修改名称或面板启动项（端口映射、`/deploy` 挂载、`THERESA_WEBCONTROLLER`）时，在宿主机编辑 `compose.yaml` 后重新登记保护配置：
+Compose 项目名称不能从网页修改。修改名称或面板启动项（端口映射、`/deploy` 挂载、`THERESA_BOT`）时，在宿主机编辑 `compose.yaml` 后重新登记保护配置：
 
 ```bash
 bash scripts/setup_webcontroller.sh --accept-panel-upgrade

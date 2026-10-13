@@ -32,12 +32,14 @@ v1 用 `THERESA_DEPLOY_DIR` 把部署目录以相同绝对路径挂进面板容�
 - 面板镜像保留 Docker CLI 与 Compose 插件，仅用于客户端校验；`compose.yaml` 不再挂载 socket。
 - 验证状态：Windows 全量测试 222 项通过、4 项跳过（Linux Docker 集成与 Chromium 浏览器测试）；集成测试改写为无 socket 场景，待 Linux/WSL 重新运行确认。
 
-## v4：并入 Bot 进程（已实施，当前）
+## v4：面板作为容器主进程（已实施，当前）
 
-面板镜像没有独立存在的必要：bot 镜像 `COPY . .` 天然包含面板代码与全部依赖，第二个镜像却带来发布、版本对齐与拉取失败问题。daemon 零访问（v3）落地后，此前反对合并的安全顾虑不再成立。方案：
+面板镜像没有独立存在的必要：bot 镜像 `COPY . .` 天然包含面板代码与全部依赖，第二个镜像却带来发布、版本对齐与拉取失败问题；daemon 零访问（v3）落地后，合并的安全顾虑不再成立。中间方案（Bot 进程内以 task 启动面板）有一个真实缺陷：entrypoint 在拉起 Bot 前会无限等待 QQ 扫码登录，面板要等到登录成功才可用——恰恰是部署最需要面板的阶段。最终方案反转主从：
 
-- Bot 入口检测 `THERESA_WEBCONTROLLER=1`，在同一事件循环中以独立 `uvicorn.Server` 启动面板（沿用 WebhookHandler 的模式）；面板异常只记录日志，不拖垮 Bot。`web/deployment/runtime.py` 承载组装逻辑（探测 `/deploy` 挂载判定模式、自动初始化、构建应用），CLI 与进程内共用。
-- compose.yaml 删除 webcontroller 服务；theresa 服务增加 `/deploy` 挂载（`source: .`）、`127.0.0.1:7001:7001` 端口映射和 `THERESA_WEBCONTROLLER: "1"`。`configs/` 同时挂载到 `/app/theresa/configs` 与 `/deploy/configs`，面板配置编辑直接落到 Bot 读取的同一目录。
+- 面板是 theresa 容器的主进程（镜像 CMD 为 `python -m web.deployment --mode compose`），先就绪、先可用；`THERESA_BOT=1` 时以子进程拉起原启动链（数据库初始化、等待 QQ 登录、`main.py`），退出后按 1 秒起步、封顶 30 秒的退避自动重启。`THERESA_BOT=0` 为救援模式（只起面板修配置），`THERESA_WEBCONTROLLER=0` 为纯 Bot 形态。
+- 双向解耦：面板失败（端口占用、状态记录不匹配）只记录日志，Bot 继续运行；Bot 崩溃不影响面板。SIGTERM 由面板转发给子进程；作为 PID 1，面板在 uvicorn 信号捕获之外自行安装信号处理器。
+- `web/deployment/runtime.py` 承载组装与监督（探测 `/deploy` 挂载判定模式、自动初始化、构建应用、子进程守护），CLI 与容器共用。
+- compose.yaml 删除 webcontroller 服务与 entrypoint/command 覆盖；theresa 服务增加 `/deploy` 挂载（`source: .`）、`127.0.0.1:7001:7001` 端口映射和 `THERESA_BOT: "1"`。`configs/` 同时挂载到 `/app/theresa/configs` 与 `/deploy/configs`，面板配置编辑直接落到 Bot 读取的同一目录。
 - Dockerfile 合并 docker CLI 与 Compose 插件（仅客户端校验）；`Dockerfile.webcontroller`、面板镜像 CI/发布任务删除；`setup_webcontroller.sh` 改为 `docker compose run --entrypoint python3 theresa`。
-- 保护基线收敛为 Compose 项目名：面板所在的服务即 theresa，改动其 env/镜像是正常需求，不再有"面板服务"可保护；服务全部可从网页编辑。
-- Docker 集成测试改为纯宿主机侧（runner 校验 + `up -d --wait` + profiles 行为）；容器内部署流程（theresa 容器内自动初始化、登录、保存）待 Linux/WSL 验证。
+- 保护基线收敛为 Compose 项目名：面板所在的服务即 theresa，改动其 env/镜像是正常需求；服务全部可从网页编辑。
+- Docker 集成测试为纯宿主机侧（runner 校验 + `up -d --wait` + profiles 行为）；supervisor 的重启与停机终止有进程级测试；容器内部署流程待 Linux/WSL 验证。

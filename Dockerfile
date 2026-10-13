@@ -20,4 +20,6 @@ COPY . .
 
 RUN uv sync --frozen --no-dev
 
-CMD ["python3", "/app/theresa/main.py"]
+# The panel is the container's main process; it supervises the Bot as a child
+# (THERESA_BOT=1) and serves the web UI.
+CMD ["python3", "-m", "web.deployment", "--mode", "compose"]

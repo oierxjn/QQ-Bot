@@ -271,22 +271,6 @@ class Bot:
         Log.info(f"启动监听服务 {self.client_address}")
         event_server = asyncio.create_task(event.run(event_ip, int(event_port)))
 
-        if os.environ.get("THERESA_WEBCONTROLLER") == "1":
-            from web.deployment.runtime import serve as panel_serve
-
-            Log.info("启动 WebController 部署面板")
-            panel_server = asyncio.create_task(panel_serve())
-
-            def _on_panel_done(task: asyncio.Task) -> None:
-                try:
-                    exc = task.exception()
-                except asyncio.CancelledError:
-                    return
-                if exc is not None:
-                    Log.error(f"WebController 面板异常退出: {exc}")
-
-            panel_server.add_done_callback(_on_panel_done)
-
         webhook_handler = None
         scheduler = Scheduler(self.configs_path)
         scheduler_started = scheduler.register_tasks()

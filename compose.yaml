@@ -54,12 +54,10 @@ services:
 
     theresa:
         image: heai/theresa:latest
-        entrypoint: ["/bin/sh", "/app/theresa/scripts/entrypoint.sh"]
-        command: ["python3", "/app/theresa/main.py"]
         ports:
             - "127.0.0.1:7001:7001"
         environment:
-            THERESA_WEBCONTROLLER: "1"
+            THERESA_BOT: "1"
         volumes:
             - type: bind
               source: .

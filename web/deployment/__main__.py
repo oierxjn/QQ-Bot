@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import getpass
 import json
 import os
@@ -8,12 +9,10 @@ import sys
 import time
 from pathlib import Path
 
-import uvicorn
-
 from . import default_source_root
 from .auth import create_credentials
 from .config import ComposeDocument, DeploymentError, atomic_write
-from .runtime import PANEL_DEPLOY_MOUNT, prepare
+from .runtime import PANEL_DEPLOY_MOUNT, serve
 from .setup import discover_project, initialize, initialize_source, print_initial_password
 
 
@@ -220,16 +219,9 @@ def main():
         run_setup(root, args, parser)
         return
     try:
-        app = prepare(root, args.mode)
+        asyncio.run(serve(args.port, root, args.mode))
     except DeploymentError as exc:
         raise SystemExit(f"初始化或模式切换失败：{exc}") from None
-    uvicorn.run(
-        app,
-        host="127.0.0.1" if args.mode == "source" else "0.0.0.0",
-        port=args.port,
-        access_log=False,
-        proxy_headers=False,
-    )
 
 
 if __name__ == "__main__":

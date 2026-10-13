@@ -145,6 +145,14 @@ def test_adopt_mode_migrates_identity(tmp_path):
         adopt_mode(tmp_path.parent / "never-initialized", "source")
 
 
+class _ImmediateServer:
+    def __init__(self, config):
+        pass
+
+    async def serve(self):
+        pass
+
+
 def test_serve_auto_initializes(tmp_path, monkeypatch):
     configs = tmp_path / "configs"
     configs.mkdir()
@@ -153,7 +161,7 @@ def test_serve_auto_initializes(tmp_path, monkeypatch):
     monkeypatch.setattr(
         sys, "argv", ["web.deployment", "--mode", "source", "--root", str(tmp_path)]
     )
-    monkeypatch.setattr("web.deployment.__main__.uvicorn.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("web.deployment.runtime.uvicorn.Server", _ImmediateServer)
     main()
     assert (tmp_path / ".webcontroller" / "settings.json").is_file()
     assert (tmp_path / ".webcontroller" / "initial-password").is_file()
@@ -164,7 +172,7 @@ def test_compose_serve_auto_initializes(tmp_path, monkeypatch):
     monkeypatch.setattr(
         sys, "argv", ["web.deployment", "--mode", "compose", "--root", str(tmp_path)]
     )
-    monkeypatch.setattr("web.deployment.__main__.uvicorn.run", lambda *args, **kwargs: None)
+    monkeypatch.setattr("web.deployment.runtime.uvicorn.Server", _ImmediateServer)
     main()
     settings = json.loads(
         (tmp_path / ".webcontroller" / "settings.json").read_text(encoding="utf-8")
@@ -172,6 +180,47 @@ def test_compose_serve_auto_initializes(tmp_path, monkeypatch):
     assert settings["mode"] == "compose"
     assert (tmp_path / ".webcontroller" / "initial-password").is_file()
     assert (tmp_path / ".webcontroller" / "protected.json").is_file()
+
+
+@pytest.mark.asyncio
+async def test_supervise_bot_restarts_then_stops(tmp_path):
+    import asyncio
+    import sys
+
+    from web.deployment.runtime import supervise_bot
+
+    stop = asyncio.Event()
+    marker = tmp_path / "marker"
+    command = [sys.executable, "-c", f"open({str(marker)!r}, 'a').write('x')"]
+    task = asyncio.create_task(
+        supervise_bot(stop, command, tmp_path, backoff_start=0.05, backoff_cap=0.1)
+    )
+    try:
+        for _ in range(200):
+            if marker.is_file() and len(marker.read_text(encoding="utf-8")) >= 3:
+                break
+            await asyncio.sleep(0.05)
+        assert marker.is_file() and len(marker.read_text(encoding="utf-8")) >= 3, (
+            "supervisor did not restart the child"
+        )
+    finally:
+        stop.set()
+        await asyncio.wait_for(task, 10)
+
+
+@pytest.mark.asyncio
+async def test_supervise_bot_terminates_child_on_stop(tmp_path):
+    import asyncio
+    import sys
+
+    from web.deployment.runtime import supervise_bot
+
+    stop = asyncio.Event()
+    command = [sys.executable, "-c", "import time; time.sleep(30)"]
+    task = asyncio.create_task(supervise_bot(stop, command, tmp_path, backoff_start=0.05))
+    await asyncio.sleep(0.5)
+    stop.set()
+    await asyncio.wait_for(task, 10)
 
 
 def test_detect_runtime_uses_deploy_mount(tmp_path, monkeypatch):
