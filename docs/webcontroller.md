@@ -1,6 +1,6 @@
 # 部署面板（WebController）
 
-面板不依赖 QQ 登录和数据库。源码部署中它与 Bot 分开运行；Docker 部署中面板是容器的主进程，Bot 由它拉起并守护（`THERESA_BOT=1`）：面板先启动、先可用，Bot 崩溃后自动退避重启，面板自身异常只记录日志、不影响 Bot，`docker compose stop` 的停止信号由面板转发给 Bot。两种方式均提供 TOML 配置管理、校验、差异及备份恢复；Docker 部署另外提供 Compose 表单/YAML 编辑。面板不挂载 Docker socket，对 Docker daemon 零访问：不显示容器运行状态，也不执行任何容器操作。
+面板不依赖 QQ 登录和数据库。面板与 Bot 的关系由 `THERESA_BOT` 决定，两种部署方式机制相同：开启时面板拉起并守护 Bot——面板先启动、先可用，Bot 崩溃后自动退避重启，面板自身异常只记录日志、不影响 Bot，停止信号由面板转发给 Bot；关闭时两者独立运行。容器部署在 compose.yaml 中默认开启；源码部署默认关闭（Bot 常由 systemd 单独守护），设置 `THERESA_BOT=1` 可获得相同形态。两种方式均提供 TOML 配置管理、校验、差异及备份恢复；Docker 部署另外提供 Compose 表单/YAML 编辑。面板不挂载 Docker socket，对 Docker daemon 零访问：不显示容器运行状态，也不执行任何容器操作。
 
 ## 纯源码部署（Windows / Linux）
 
@@ -19,7 +19,7 @@ uv run -m web.deployment --mode source
 
 默认监听 `127.0.0.1:7001`，可使用 `--port 7002` 指定其他端口。可用 `--bg` 以后台进程运行（`--mode source --bg`），PID 与日志分别记录在 `.webcontroller/panel.pid`、`panel.log`，用 `--mode source --stop` 停止；长期运行仍建议使用下文的 systemd 服务。远程访问使用下文的 SSH 转发。旧 Bot 配置中的 `web_controller_address` 不控制独立面板，仍保留以兼容 Bot 配置加载。
 
-面板与 `uv run main.py` 分开运行。面板不会启动、停止或自动重启 Bot，也不执行数据库初始化。忘记密码时执行：
+面板与 Bot 默认互不干预：`uv run main.py` 照常单独运行，面板不会启动、停止或自动重启 Bot，也不执行数据库初始化。设置 `THERESA_BOT=1` 后面板改为拉起并守护 `main.py`（与 Docker 部署同机制）：Bot 退出自动退避重启，`--bg`/`--stop` 一并管理 Bot；此时不要再用 systemd 或其他终端单独运行 Bot，避免双实例。忘记密码时执行：
 
 ```bash
 uv run -m web.deployment --mode source --reset-password
@@ -27,7 +27,7 @@ uv run -m web.deployment --mode source --reset-password
 
 重启面板后使用新密码登录。Linux 状态目录与文件限制为当前用户访问；Windows 使用用户目录的 Windows ACL，请将项目放在可信用户目录内，不与不可信用户共享配置和备份。
 
-Linux 可使用独立 systemd 服务保持面板运行，以下为参考（替换用户名、uv 路径和项目路径，使用 `command -v uv` 查找路径）：
+Linux 可使用独立 systemd 服务保持面板运行，以下为参考（替换用户名、uv 路径和项目路径，使用 `command -v uv` 查找路径）。开启 `THERESA_BOT=1` 时该服务会一并守护 Bot，无需再为 Bot 单独建服务：
 
 ```ini
 [Unit]

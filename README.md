@@ -101,7 +101,7 @@ uv run scripts/create_tables.py
 uv run -m web.deployment --mode source
 ```
 
-初始化自动生成随机管理员密码，存于 `.webcontroller/initial-password`，首次成功登录后自动删除；同时只从模板补齐缺失文件，不覆盖已有配置。访问 `http://127.0.0.1:7001`，保存配置后手动重启 Bot。面板和 Bot 在不同终端或独立服务中运行，面板可用 `--bg` 后台运行、`--stop` 停止。Windows 和 Linux 均支持，更多启动、密码重置及后台运行说明见 [WebController 文档](docs/webcontroller.md)。
+初始化自动生成随机管理员密码，存于 `.webcontroller/initial-password`，首次成功登录后自动删除；同时只从模板补齐缺失文件，不覆盖已有配置。访问 `http://127.0.0.1:7001`，保存配置后手动重启 Bot。面板和 Bot 默认在不同终端或独立服务中运行，面板可用 `--bg` 后台运行、`--stop` 停止；设置 `THERESA_BOT=1` 则由面板拉起并守护 Bot（与 Docker 部署同机制），无需单独运行 `main.py`。Windows 和 Linux 均支持，更多启动、密码重置及后台运行说明见 [WebController 文档](docs/webcontroller.md)。
 
 ```bash
 uv run main.py

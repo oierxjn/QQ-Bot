@@ -11,6 +11,7 @@ import asyncio
 import json
 import os
 import signal
+import sys
 from pathlib import Path
 
 import uvicorn
@@ -134,13 +135,14 @@ async def supervise_bot(stop, command, cwd, backoff_start=1.0, backoff_cap=30.0)
 async def serve(port=7001, root=None, mode=None):
     """Serve entry for the CLI and the container command.
 
-    compose 模式下 THERESA_BOT=1 开启 Bot 子进程监督（容器主进程形态）；
+    THERESA_BOT=1 让面板拉起并守护 Bot 子进程，两种部署方式机制相同；
+    容器在 compose.yaml 中显式开启，源码部署默认关闭（Bot 常由 systemd 单独守护）。
     THERESA_WEBCONTROLLER=0 关闭面板 HTTP 服务（仅拉起 Bot 的形态）。
     """
     if root is None:
         root, mode = detect_runtime()
     root = Path(root).resolve()
-    bot_enabled = mode == "compose" and os.environ.get("THERESA_BOT") == "1"
+    bot_enabled = os.environ.get("THERESA_BOT") == "1"
     panel_enabled = os.environ.get("THERESA_WEBCONTROLLER", "1") != "0"
     if not panel_enabled and not bot_enabled:
         raise SystemExit("THERESA_WEBCONTROLLER 与 THERESA_BOT 均未启用，没有可运行的服务")
@@ -157,8 +159,14 @@ async def serve(port=7001, root=None, mode=None):
     if panel_enabled:
         panel = asyncio.create_task(serve_panel(root, mode, port, stop, strict=not bot_enabled))
     if bot_enabled:
-        command = ["bash", "scripts/entrypoint.sh", "python3", "main.py"]
-        bot = asyncio.create_task(supervise_bot(stop, command, default_source_root()))
+        if mode == "compose":
+            # 容器内跑镜像侧代码，入口链含数据库初始化与 QQ 登录等待。
+            command = ["bash", "scripts/entrypoint.sh", "python3", "main.py"]
+            cwd = default_source_root()
+        else:
+            command = [sys.executable, "main.py"]
+            cwd = root
+        bot = asyncio.create_task(supervise_bot(stop, command, cwd))
     try:
         if panel is not None:
             await panel

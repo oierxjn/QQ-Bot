@@ -100,7 +100,8 @@ def stop_background(root):
         print(f"记录的 PID {pid} 已退出，清理残留记录")
         return
     if os.name == "nt":
-        finished = subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
+        # /T kills the supervised Bot child along with the panel.
+        finished = subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True)
         if finished.returncode != 0:
             detail = (finished.stderr or finished.stdout).decode(errors="replace").strip()
             raise SystemExit(f"停止失败：{detail}")

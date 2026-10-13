@@ -182,6 +182,33 @@ def test_compose_serve_auto_initializes(tmp_path, monkeypatch):
     assert (tmp_path / ".webcontroller" / "protected.json").is_file()
 
 
+def test_source_serve_can_supervise_bot(tmp_path, monkeypatch):
+    import sys
+
+    from web.deployment import runtime
+
+    configs = tmp_path / "configs"
+    configs.mkdir()
+    for name in CONFIG_NAMES:
+        (configs / f"{name}.template").write_text("", encoding="utf-8")
+    recorded = {}
+
+    async def fake_supervise(stop, command, cwd, **kwargs):
+        recorded["command"] = command
+        recorded["cwd"] = cwd
+        stop.set()
+
+    monkeypatch.setenv("THERESA_BOT", "1")
+    monkeypatch.setattr(runtime, "supervise_bot", fake_supervise)
+    monkeypatch.setattr("web.deployment.runtime.uvicorn.Server", _ImmediateServer)
+    monkeypatch.setattr(
+        sys, "argv", ["web.deployment", "--mode", "source", "--root", str(tmp_path)]
+    )
+    main()
+    assert recorded["command"] == [sys.executable, "main.py"]
+    assert recorded["cwd"] == tmp_path.resolve()
+
+
 @pytest.mark.asyncio
 async def test_supervise_bot_restarts_then_stops(tmp_path):
     import asyncio

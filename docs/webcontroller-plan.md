@@ -36,7 +36,7 @@ v1 用 `THERESA_DEPLOY_DIR` 把部署目录以相同绝对路径挂进面板容�
 
 面板镜像没有独立存在的必要：bot 镜像 `COPY . .` 天然包含面板代码与全部依赖，第二个镜像却带来发布、版本对齐与拉取失败问题；daemon 零访问（v3）落地后，合并的安全顾虑不再成立。中间方案（Bot 进程内以 task 启动面板）有一个真实缺陷：entrypoint 在拉起 Bot 前会无限等待 QQ 扫码登录，面板要等到登录成功才可用——恰恰是部署最需要面板的阶段。最终方案反转主从：
 
-- 面板是 theresa 容器的主进程（镜像 CMD 为 `python -m web.deployment --mode compose`），先就绪、先可用；`THERESA_BOT=1` 时以子进程拉起原启动链（数据库初始化、等待 QQ 登录、`main.py`），退出后按 1 秒起步、封顶 30 秒的退避自动重启。`THERESA_BOT=0` 为救援模式（只起面板修配置），`THERESA_WEBCONTROLLER=0` 为纯 Bot 形态。
+- 面板是 theresa 容器的主进程（镜像 CMD 为 `python -m web.deployment --mode compose`），先就绪、先可用；`THERESA_BOT=1` 时以子进程拉起 Bot，退出后按 1 秒起步、封顶 30 秒的退避自动重启。该机制对两种部署方式一致：容器经 compose.yaml 显式开启，子命令为完整启动链（数据库初始化、等待 QQ 登录、`main.py`）；源码部署默认关闭（Bot 常由 systemd 单独守护，避免双实例），开启后直接守护 `main.py`。`THERESA_BOT=0` 为救援模式（只起面板修配置），`THERESA_WEBCONTROLLER=0` 为纯 Bot 形态。
 - 双向解耦：面板失败（端口占用、状态记录不匹配）只记录日志，Bot 继续运行；Bot 崩溃不影响面板。SIGTERM 由面板转发给子进程；作为 PID 1，面板在 uvicorn 信号捕获之外自行安装信号处理器。
 - `web/deployment/runtime.py` 承载组装与监督（探测 `/deploy` 挂载判定模式、自动初始化、构建应用、子进程守护），CLI 与容器共用。
 - compose.yaml 删除 webcontroller 服务与 entrypoint/command 覆盖；theresa 服务增加 `/deploy` 挂载（`source: .`）、`127.0.0.1:7001:7001` 端口映射和 `THERESA_BOT: "1"`。`configs/` 同时挂载到 `/app/theresa/configs` 与 `/deploy/configs`，面板配置编辑直接落到 Bot 读取的同一目录。
