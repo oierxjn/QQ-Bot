@@ -128,10 +128,10 @@ def test_serve_auto_initializes(tmp_path, monkeypatch):
         (configs / f"{name}.template").write_text("", encoding="utf-8")
     recorded = {}
 
-    async def fake_supervise(stop, command, cwd, **kwargs):
+    async def fake_supervise(control, command, cwd, **kwargs):
         recorded["command"] = command
         recorded["cwd"] = cwd
-        stop.set()
+        control.stop.set()
 
     monkeypatch.setattr(runtime, "supervise_bot", fake_supervise)
     monkeypatch.setattr("src.deployment.runtime.uvicorn.Server", _ImmediateServer)
@@ -177,10 +177,10 @@ def test_compose_serve_supervises_entrypoint_chain(tmp_path, monkeypatch):
     (tmp_path / "compose.yaml").write_text(SOURCE, encoding="utf-8")
     recorded = {}
 
-    async def fake_supervise(stop, command, cwd, **kwargs):
+    async def fake_supervise(control, command, cwd, **kwargs):
         recorded["command"] = command
         recorded["cwd"] = cwd
-        stop.set()
+        control.stop.set()
 
     monkeypatch.setattr(runtime, "supervise_bot", fake_supervise)
     monkeypatch.setattr(runtime, "PANEL_DEPLOY_MOUNT", str(tmp_path))
@@ -196,13 +196,13 @@ async def test_supervise_bot_restarts_then_stops(tmp_path):
     import asyncio
     import sys
 
-    from src.deployment.runtime import supervise_bot
+    from src.deployment.runtime import BotControl, supervise_bot
 
-    stop = asyncio.Event()
+    control = BotControl()
     marker = tmp_path / "marker"
     command = [sys.executable, "-c", f"open({str(marker)!r}, 'a').write('x')"]
     task = asyncio.create_task(
-        supervise_bot(stop, command, tmp_path, backoff_start=0.05, backoff_cap=0.1)
+        supervise_bot(control, command, tmp_path, backoff_start=0.05, backoff_cap=0.1)
     )
     try:
         for _ in range(200):
@@ -213,7 +213,37 @@ async def test_supervise_bot_restarts_then_stops(tmp_path):
             "supervisor did not restart the child"
         )
     finally:
-        stop.set()
+        control.stop.set()
+        await asyncio.wait_for(task, 10)
+
+
+@pytest.mark.asyncio
+async def test_supervise_bot_restart_request_skips_backoff(tmp_path):
+    import asyncio
+    import sys
+    import time
+
+    from src.deployment.runtime import BotControl, supervise_bot
+
+    control = BotControl()
+    command = [sys.executable, "-c", "import time; time.sleep(30)"]
+    task = asyncio.create_task(supervise_bot(control, command, tmp_path, backoff_cap=600.0))
+    try:
+        for _ in range(100):
+            if control.process is not None:
+                break
+            await asyncio.sleep(0.05)
+        first_pid = control.process.pid
+        started = time.monotonic()
+        control.restart.set()
+        for _ in range(200):
+            if control.process is not None and control.process.pid != first_pid:
+                break
+            await asyncio.sleep(0.05)
+        assert control.process.pid != first_pid, "restart request did not respawn the child"
+        assert time.monotonic() - started < 5, "restart request waited on backoff"
+    finally:
+        control.stop.set()
         await asyncio.wait_for(task, 10)
 
 
@@ -222,13 +252,13 @@ async def test_supervise_bot_terminates_child_on_stop(tmp_path):
     import asyncio
     import sys
 
-    from src.deployment.runtime import supervise_bot
+    from src.deployment.runtime import BotControl, supervise_bot
 
-    stop = asyncio.Event()
+    control = BotControl()
     command = [sys.executable, "-c", "import time; time.sleep(30)"]
-    task = asyncio.create_task(supervise_bot(stop, command, tmp_path, backoff_start=0.05))
+    task = asyncio.create_task(supervise_bot(control, command, tmp_path, backoff_start=0.05))
     await asyncio.sleep(0.5)
-    stop.set()
+    control.stop.set()
     await asyncio.wait_for(task, 10)
 
 
@@ -238,9 +268,9 @@ async def test_supervise_bot_resets_backoff_after_stable_run(tmp_path):
     import sys
     import time
 
-    from src.deployment.runtime import supervise_bot
+    from src.deployment.runtime import BotControl, supervise_bot
 
-    stop = asyncio.Event()
+    control = BotControl()
     restarts = tmp_path / "restarts"
     # First child exits immediately; the second sleeps long enough to count as
     # stable (reset_after), so the next crash must restart at backoff_start.
@@ -257,7 +287,9 @@ async def test_supervise_bot_resets_backoff_after_stable_run(tmp_path):
         ),
     ]
     task = asyncio.create_task(
-        supervise_bot(stop, command, tmp_path, backoff_start=0.05, backoff_cap=5.0, reset_after=0.5)
+        supervise_bot(
+            control, command, tmp_path, backoff_start=0.05, backoff_cap=5.0, reset_after=0.5
+        )
     )
     try:
         deadline = time.monotonic() + 20
@@ -267,7 +299,7 @@ async def test_supervise_bot_resets_backoff_after_stable_run(tmp_path):
             assert time.monotonic() < deadline, "supervisor did not restart after stable run"
             await asyncio.sleep(0.05)
     finally:
-        stop.set()
+        control.stop.set()
         await asyncio.wait_for(task, 10)
 
 

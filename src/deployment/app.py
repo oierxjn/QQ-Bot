@@ -43,7 +43,9 @@ class ConfigPatch(BaseModel):
     changes: list[ConfigChange] = Field(max_length=1000)
 
 
-def create_app(document: ComposeDocument | None, runner, credentials, *, configs=None):
+def create_app(
+    document: ComposeDocument | None, runner, credentials, *, configs=None, bot_control=None
+):
     authentication = Authentication(credentials)
     login_lock = asyncio.Lock()
     if configs is None:
@@ -151,7 +153,17 @@ def create_app(document: ComposeDocument | None, runner, credentials, *, configs
             "mode": "compose" if document is not None else "source",
             "compose": document is not None,
             "configs": list(CONFIG_NAMES),
+            "bot_restart": bot_control is not None,
         }
+
+    @app.post("/api/bot/restart")
+    async def restart_bot():
+        if bot_control is None or bot_control.process is None:
+            raise DeploymentError("Bot 子进程未在运行", 503)
+        bot_control.restart.set()
+        if bot_control.process.returncode is None:
+            bot_control.process.terminate()
+        return {"restarted": True}
 
     @app.get("/api/configs")
     async def config_list():

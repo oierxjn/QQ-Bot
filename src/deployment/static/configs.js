@@ -122,6 +122,7 @@ async function configBackups() {
 }
 async function initializeConfigs(capabilities) {
   $("compose-page").hidden = !capabilities.compose;
+  $("config-restart-bot").hidden = !capabilities.bot_restart;
   if (configMode !== capabilities.mode || !configInitialized) {
     configMode = capabilities.mode;
     $("config-file").replaceChildren(...capabilities.configs.map((name) => { const option = document.createElement("option"); option.value = name; option.textContent = name; return option; }));
@@ -146,7 +147,7 @@ $("config-source").addEventListener("input", configState);
 $("config-form-tab").addEventListener("click", () => action(() => switchConfigView("form")));
 $("config-text-tab").addEventListener("click", () => action(() => switchConfigView("text")));
 $("config-save").addEventListener("click", () => action(async () => {
-  await api(configPath(), "PUT", configBody()); await readConfig(); notice("配置已保存；请手动重启 Bot。");
+  await api(configPath(), "PUT", configBody()); await readConfig(); notice("配置已保存；点击“重启 Bot”应用新配置。");
 }));
 $("config-diff-panel").addEventListener("toggle", () => action(async () => {
   if (!$("config-diff-panel").open) return;
@@ -155,6 +156,10 @@ $("config-diff-panel").addEventListener("toggle", () => action(async () => {
 }));
 $("config-reload").addEventListener("click", () => action(async () => {
   if (configDirty()) confirmAction("重新读取配置", "未保存的配置草稿会被替换，可先下载。", "", readConfig); else await readConfig();
+}));
+$("config-restart-bot").addEventListener("click", () => action(async () => {
+  const data = await api("/api/bot/restart", "POST");
+  notice(data.restarted ? "Bot 重启中，稍后将加载最新配置。" : "Bot 未在运行。");
 }));
 $("config-download").addEventListener("click", () => action(async () => {
   await syncConfigForm(); const url = URL.createObjectURL(new Blob([$("config-source").value], {type: "text/plain;charset=utf-8"}));

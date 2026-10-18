@@ -42,4 +42,5 @@ v1 用 `THERESA_DEPLOY_DIR` 把部署目录以相同绝对路径挂进面板容�
 - compose.yaml 删除 webcontroller 服务与 entrypoint/command 覆盖；theresa 服务增加 `/deploy` 挂载（`source: .`）和 `127.0.0.1:7001:7001` 端口映射。`configs/` 同时挂载到 `/app/theresa/configs` 与 `/deploy/configs`，面板配置编辑直接落到 Bot 读取的同一目录。
 - Dockerfile 合并 docker CLI 与 Compose 插件（仅客户端校验）；`Dockerfile.webcontroller`、面板镜像 CI/发布任务删除；`setup_webcontroller.sh` 改为 `docker compose run --entrypoint python3 theresa`。
 - 保护基线收敛为 Compose 项目名：面板所在的服务即 theresa，改动其 env/镜像是正常需求；服务全部可从网页编辑。
+- "重启 Bot"动作（`/api/bot/restart`，经登录与 CSRF）：通过监督者立即重启子进程并归零退避，使保存的配置即时应用，替代旧设计中"重启面板/重启容器"的应用方式。
 - Docker 集成测试为纯宿主机侧（runner 校验 + `up -d --wait` + profiles 行为）；supervisor 的重启与停机终止有进程级测试；容器内部署流程待 Linux/WSL 验证。

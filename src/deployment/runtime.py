@@ -42,9 +42,10 @@ def detect_runtime(root=None):
     return Path(root or default_source_root()).resolve(), "source"
 
 
-def build_app(root):
+def build_app(root, mode=None, bot_control=None):
     root = Path(root).resolve()
-    _, mode = detect_runtime(root)
+    if mode is None:
+        _, mode = detect_runtime(root)
     state = root / ".webcontroller"
     settings = json.loads((state / "settings.json").read_text(encoding="utf-8"))
     if settings.get("root") != str(root):
@@ -53,13 +54,15 @@ def build_app(root):
         )
     credentials = json.loads((state / "credentials.json").read_text(encoding="utf-8"))
     if mode == "source":
-        return create_app(None, None, credentials, configs=ConfigStore(root, state))
+        return create_app(
+            None, None, credentials, configs=ConfigStore(root, state), bot_control=bot_control
+        )
     document = ComposeDocument(root, state)
     runner = ComposeRunner(root, settings["project"])
-    return create_app(document, runner, credentials)
+    return create_app(document, runner, credentials, bot_control=bot_control)
 
 
-def prepare(root, mode):
+def prepare(root, mode, control=None):
     """Auto-initialize on first run, then build the app."""
     root = Path(root).resolve()
     if not (root / ".webcontroller" / "settings.json").is_file():
@@ -75,10 +78,10 @@ def _notify(message):
     print(message, flush=True)
 
 
-async def serve_panel(root, mode, port, stop):
+async def serve_panel(root, mode, port, stop, control):
     """Serve the HTTP panel; `stop` is set only on a clean uvicorn exit (shutdown)."""
     try:
-        app = prepare(root, mode)
+        app = prepare(root, mode, control)
         config = uvicorn.Config(
             app,
             host="127.0.0.1" if mode == "source" else "0.0.0.0",
@@ -96,12 +99,29 @@ async def serve_panel(root, mode, port, stop):
     stop.set()
 
 
-async def supervise_bot(stop, command, cwd, backoff_start=1.0, backoff_cap=600.0, reset_after=60.0):
+class BotControl:
+    """Shared handle between the supervisor and the panel API.
+
+    ``stop`` shuts the supervisor down; ``restart`` asks for an immediate child
+    restart that skips the backoff (used by the "重启 Bot" panel action).
+    """
+
+    def __init__(self):
+        self.stop = asyncio.Event()
+        self.restart = asyncio.Event()
+        self.process = None
+
+
+async def supervise_bot(
+    control, command, cwd, backoff_start=1.0, backoff_cap=600.0, reset_after=60.0
+):
     """Run the Bot as a child process and restart it with exponential backoff.
 
     A child that stayed up for `reset_after` seconds counts as stable and the
-    next crash restarts at `backoff_start` again.
+    next crash restarts at `backoff_start` again; a restart request bypasses
+    the backoff entirely.
     """
+    stop = control.stop
     backoff = backoff_start
     while not stop.is_set():
         started = asyncio.get_running_loop().time()
@@ -110,12 +130,16 @@ async def supervise_bot(stop, command, cwd, backoff_start=1.0, backoff_cap=600.0
         except OSError as exc:
             _notify(f"无法启动 Bot 进程，放弃拉起：{exc}")
             return
+        control.process = process
         _notify(f"Bot 进程已启动（PID {process.pid}）")
         waiter = asyncio.create_task(process.wait())
         stopper = asyncio.create_task(stop.wait())
-        await asyncio.wait({waiter, stopper}, return_when=asyncio.FIRST_COMPLETED)
+        restarter = asyncio.create_task(control.restart.wait())
+        await asyncio.wait({waiter, stopper, restarter}, return_when=asyncio.FIRST_COMPLETED)
         stopper.cancel()
-        if stop.is_set() and process.returncode is None:
+        restarter.cancel()
+        requested = control.restart.is_set()
+        if (stop.is_set() or requested) and process.returncode is None:
             process.terminate()
             try:
                 await asyncio.wait_for(process.wait(), timeout=5)
@@ -123,15 +147,21 @@ async def supervise_bot(stop, command, cwd, backoff_start=1.0, backoff_cap=600.0
                 process.kill()
                 await process.wait()
         code = await waiter
+        control.restart.clear()
         if stop.is_set():
             return
+        if requested:
+            # 配置应用类重启：立即拉起，退避归零。
+            backoff = backoff_start
+            continue
         if asyncio.get_running_loop().time() - started >= reset_after:
             backoff = backoff_start
         _notify(f"Bot 进程退出（exit {code}），{backoff:g} 秒后重启")
-        try:
-            await asyncio.wait_for(stop.wait(), timeout=backoff)
-        except TimeoutError:
-            pass
+        await asyncio.wait(
+            [asyncio.create_task(stop.wait()), asyncio.create_task(control.restart.wait())],
+            timeout=backoff,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
         backoff = min(backoff * 2, backoff_cap)
 
 
@@ -160,8 +190,9 @@ async def serve(port=7001, root=None, mode=None):
     else:
         command = [sys.executable, "main.py"]
         cwd = root
-    panel = asyncio.create_task(serve_panel(root, mode, port, stop))
-    bot = asyncio.create_task(supervise_bot(stop, command, cwd))
+    control = BotControl()
+    panel = asyncio.create_task(serve_panel(root, mode, port, stop, control))
+    bot = asyncio.create_task(supervise_bot(control, command, cwd))
     try:
         await panel
         if stop.is_set():

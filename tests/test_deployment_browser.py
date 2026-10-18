@@ -71,7 +71,7 @@ def test_source_browser_form_text_conflict_restore_and_groups(tmp_path):
             expect(page.locator("#config-source")).to_have_value("[broken")
             page.locator("#config-source").fill(source)
             page.locator("#config-save").click()
-            expect(page.locator("#notice")).to_contain_text("手动重启")
+            expect(page.locator("#notice")).to_contain_text("重启 Bot")
             assert "源码测试" in store.read("bot.toml")["source"]
             page.get_by_role("button", name="预览恢复配置", exact=True).first.click()
             page.locator("#confirm-action").click()
@@ -160,7 +160,7 @@ def test_browser_edit_validate_save_restore_and_mobile(tmp_path):
             page.locator("#config-text-tab").click()
             page.locator("#config-source").fill("[Example]\nenable = true\n")
             page.locator("#config-save").click()
-            expect(page.locator("#notice")).to_contain_text("手动重启")
+            expect(page.locator("#notice")).to_contain_text("重启 Bot")
             assert (tmp_path / "configs/plugins.toml").is_file()
             page.locator("#compose-page").click()
             expect(page.locator("#compose-area")).to_be_visible()

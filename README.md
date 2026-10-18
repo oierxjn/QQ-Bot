@@ -71,13 +71,13 @@ ssh -L 3080:localhost:3080 user@remote_host
 
 #### 3. 启动面板和 Bot
 
-完成 `uv sync --no-dev` 后，运行部署面板；不需要 Docker，也不依赖 QQ 登录或数据库连接：
+完成 `uv sync --no-dev` 后，运行部署面板
 
 ```bash
 uv run -m src.deployment
 ```
 
-面板会从 `configs/*.toml.template` 自动生成缺失的配置文件（已有文件不覆盖，无需手动复制），随后拉起并守护 Bot，无需单独运行 `main.py`。初始管理员密码生成于 `.webcontroller/initial-password`，首次成功登录后自动删除；浏览器打开 `http://127.0.0.1:7001`，在“Bot 配置”中按 [配置文件解释](#配置文件解释) 修改必要配置项（数据库连接、owner_id 等）并保存。修改配置后需重启面板使 Bot 加载新配置：`--stop` 停止后重新运行（面板与 Bot 一同重启）；也可用 `--bg` 后台运行。Windows 和 Linux 均支持，更多启动、密码重置说明见 [WebController 文档](docs/webcontroller.md)。
+面板会从 `configs/*.toml.template` 自动生成缺失的配置文件，随后拉起并守护 Bot。初始管理员密码生成于 `.webcontroller/initial-password`，首次成功登录后自动删除；浏览器打开 `http://127.0.0.1:7001`，在“Bot 配置”中按 [配置文件解释](#配置文件解释) 修改必要配置项（数据库连接、owner_id 等）并保存。修改配置并保存后，点击面板上的“重启 Bot”即应用新配置（面板无需重启）；`--bg` 可后台运行。Windows 和 Linux 均支持，更多启动、密码重置说明见 [WebController 文档](docs/webcontroller.md)。
 
 #### 4. 初始化数据库（可选）
 

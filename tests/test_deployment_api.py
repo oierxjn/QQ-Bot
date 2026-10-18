@@ -128,6 +128,53 @@ async def test_runner_uses_fixed_project_context_and_env_file(tmp_path):
     assert "private-value" not in runner.redact("output private-value", values=values)
 
 
+def test_bot_restart_requires_control_and_reports_unavailable(panel):
+    client, _, _ = panel
+    headers = login(client)
+    assert client.get("/api/capabilities").json()["bot_restart"] is False
+    response = client.post("/api/bot/restart", headers=headers)
+    assert response.status_code == 503
+
+
+def test_bot_restart_sets_event_and_terminates_child(tmp_path):
+    import asyncio
+
+    from fastapi.testclient import TestClient
+
+    from src.deployment.app import create_app
+    from src.deployment.auth import create_credentials
+
+    class FakeProcess:
+        returncode = None
+
+        def __init__(self):
+            self.terminated = False
+
+        def terminate(self):
+            self.terminated = True
+
+    class FakeControl:
+        def __init__(self):
+            self.stop = asyncio.Event()
+            self.restart = asyncio.Event()
+            self.process = FakeProcess()
+
+    control = FakeControl()
+    (tmp_path / "compose.yaml").write_text(SOURCE, encoding="utf-8")
+    document = ComposeDocument(tmp_path, tmp_path / ".webcontroller")
+    app = create_app(
+        document, FakeRunner(), create_credentials("test-password"), bot_control=control
+    )
+    with TestClient(app, base_url="http://localhost") as client:
+        headers = login(client)
+        assert client.get("/api/capabilities").json()["bot_restart"] is True
+        body = {"source": SOURCE, "version": document.read()["version"]}
+        assert client.put("/api/compose", json=body).status_code == 403
+        response = client.post("/api/bot/restart", headers=headers)
+        assert response.status_code == 200 and response.json()["restarted"] is True
+    assert control.restart.is_set() and control.process.terminated
+
+
 def test_unknown_host_and_large_chunked_body_are_rejected(panel):
     client, _, _ = panel
     assert client.get("/", headers={"Host": "unexpected.example"}).status_code == 400
