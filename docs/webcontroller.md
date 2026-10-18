@@ -129,7 +129,7 @@ bash scripts/setup_webcontroller.sh --reset-password
 docker compose restart theresa
 ```
 
-也可以在面板登录后直接点击“重启 Bot”，效果等同并省去容器重启。
+密码文件只在面板启动时读取一次，重置后必须重启容器，新密码才生效（“重启 Bot”按钮只重启 Bot 子进程，不起作用）。
 
 会话 8 小时后过期，面板重启使旧会话失效；失败登录超过每分钟 5 次会暂时限速。重置密码不会在终端输出新密码。校验命令的报错输出会过滤 Compose 环境变量和 `.env` 中的值；完整 YAML、差异、下载与备份仍可能包含明文密码，仅对登录管理员开放。
 
