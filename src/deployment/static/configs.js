@@ -5,7 +5,7 @@ const botLabels = {server_address: "LLBot API 地址", client_address: "Bot 事�
 function configDirty() {
   return configInitialized && ($("config-source").value !== configBaseline || configInputs.some(({input, original}) => (input.type === "checkbox" ? input.checked : input.value) !== original));
 }
-function configState() { $("config-state").textContent = configDirty() ? "草稿未保存" : "已读取 / 保存到磁盘；生效未确认"; }
+function configState() { $("config-state").textContent = configDirty() ? "草稿未保存" : "已保存"; }
 function configPath(suffix = "") { return "/api/configs/" + encodeURIComponent(configName) + suffix; }
 function configBody() { return {source: $("config-source").value, version: configVersion}; }
 function configField(path, value, label, secret = false) {
@@ -123,7 +123,7 @@ async function configBackups() {
 async function validateConfig() {
   await syncConfigForm(); const data = await api(configPath("/validate"), "POST", configBody());
   $("config-diff").textContent = data.diff || "没有配置差异。"; $("config-diff-panel").open = true;
-  notice("配置校验通过；未测试数据库、QQ 或外部服务连接。"); return data;
+  return data;
 }
 async function initializeConfigs(capabilities) {
   $("compose-page").hidden = !capabilities.compose;
