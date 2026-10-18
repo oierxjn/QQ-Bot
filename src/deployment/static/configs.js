@@ -120,11 +120,6 @@ async function configBackups() {
     })); row.append(label, button); $("config-backups").append(row);
   }
 }
-async function validateConfig() {
-  await syncConfigForm(); const data = await api(configPath("/validate"), "POST", configBody());
-  $("config-diff").textContent = data.diff || "没有配置差异。"; $("config-diff-panel").open = true;
-  return data;
-}
 async function initializeConfigs(capabilities) {
   $("compose-page").hidden = !capabilities.compose;
   if (configMode !== capabilities.mode || !configInitialized) {
@@ -150,10 +145,13 @@ $("compose-page").addEventListener("click", () => action(async () => {
 $("config-source").addEventListener("input", configState);
 $("config-form-tab").addEventListener("click", () => action(() => switchConfigView("form")));
 $("config-text-tab").addEventListener("click", () => action(() => switchConfigView("text")));
-$("config-validate").addEventListener("click", () => action(validateConfig));
 $("config-save").addEventListener("click", () => action(async () => {
-  await validateConfig();
   await api(configPath(), "PUT", configBody()); await readConfig(); notice("配置已保存；请手动重启 Bot。");
+}));
+$("config-diff-panel").addEventListener("toggle", () => action(async () => {
+  if (!$("config-diff-panel").open) return;
+  const data = await api(configPath("/validate"), "POST", configBody());
+  $("config-diff").textContent = data.diff || "没有配置差异。";
 }));
 $("config-reload").addEventListener("click", () => action(async () => {
   if (configDirty()) confirmAction("重新读取配置", "未保存的配置草稿会被替换，可先下载。", "", readConfig); else await readConfig();

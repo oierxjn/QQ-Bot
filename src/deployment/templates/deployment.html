@@ -27,11 +27,11 @@
         <div class="heading"><h1>Bot 配置</h1><span id="config-state" class="badge">正在读取…</span></div>
         <p>保存只修改配置文件。请手动重启 Bot；运行中的配置是否生效尚未确认。监听端口变化也需在 LLBot 中同步调整。</p>
         <label for="config-file">配置文件</label><select id="config-file"></select>
-        <div class="toolbar"><button id="config-reload">重新读取</button><button id="config-download">下载草稿</button><button id="config-validate">校验与差异</button><button id="config-save" class="primary">校验并保存配置</button></div>
+        <div class="toolbar"><button id="config-reload">重新读取</button><button id="config-download">下载草稿</button><button id="config-save" class="primary">校验并保存配置</button></div>
         <nav class="tabs" aria-label="Bot 配置编辑方式"><button id="config-form-tab">常用配置</button><button id="config-text-tab">完整 TOML</button></nav>
         <div id="config-form" class="field-grid"></div>
         <div id="config-text" hidden><label for="config-source">完整 TOML 配置</label><textarea id="config-source" spellcheck="false"></textarea></div>
-        <details id="config-diff-panel"><summary>配置差异</summary><pre id="config-diff"></pre></details>
+        <details id="config-diff-panel"><summary>配置差异</summary><pre id="config-diff">展开时计算当前草稿与磁盘文件的差异。</pre></details>
         <section class="panel"><div class="heading"><h2>此文件的备份</h2><button id="config-refresh-backups">刷新备份</button></div><div id="config-backups"></div></section>
       </section>
       <div id="compose-area">
@@ -39,7 +39,7 @@
       <p class="intro">修改配置后校验并保存；容器更新需在宿主机执行 <code>docker compose up -d</code>。面板自身的配置在宿主机修改。</p>
       <div class="toolbar">
         <button id="reload">重新读取</button><button id="download">下载草稿</button>
-        <button id="validate">校验与差异</button><button id="save" class="primary">校验并保存</button>
+        <button id="save" class="primary">校验并保存</button>
       </div>
       <nav class="tabs" aria-label="配置编辑方式">
         <button id="form-tab" aria-pressed="true">服务配置</button>
@@ -58,7 +58,7 @@
         <p class="muted">可编辑所有服务和顶层配置。Compose 项目名称不可从网页修改。</p>
         <textarea id="source" spellcheck="false" aria-label="完整 Compose YAML"></textarea>
       </section>
-      <details id="diff-panel"><summary>配置差异</summary><pre id="diff">校验后显示差异。</pre></details>
+      <details id="diff-panel"><summary>配置差异</summary><pre id="diff">展开时计算当前草稿与磁盘文件的差异。</pre></details>
       <div class="bottom-grid">
         <section class="panel"><div class="heading"><h2>配置备份</h2><button id="refresh-backups">刷新</button></div><p class="muted">恢复只替换配置文件，不回滚数据库、卷数据或容器状态。容器运行状态请在宿主机执行 docker compose ps 查看。</p><div id="backups">尚未查询。</div></section>
       </div>

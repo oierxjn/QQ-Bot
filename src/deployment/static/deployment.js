@@ -98,13 +98,6 @@ function confirmAction(title, message, diff, callback) {
   $("confirm-action").onclick = () => { $("confirm-dialog").close(); action(callback); };
   $("confirm-dialog").showModal();
 }
-async function validate() {
-  await syncForm();
-  const data = await api("/api/compose/validate", "POST", {source: $("source").value, version});
-  $("diff").textContent = data.diff || "没有配置差异。"; $("diff-panel").open = true;
-  notice("校验通过。数据库初始化变量的变化不会修改现有数据库；端口变化需要同步检查 Bot 和 LLBot 配置。");
-  return data;
-}
 async function refreshBackups() {
   const data = await api("/api/backups"); $("backups").replaceChildren();
   if (!data.backups.length) $("backups").textContent = "首次保存变更后会自动生成备份。";
@@ -132,11 +125,14 @@ $("service-form").addEventListener("submit", (event) => { event.preventDefault()
 $("source").addEventListener("input", updateState);
 $("form-tab").addEventListener("click", () => action(() => switchView("form")));
 $("yaml-tab").addEventListener("click", () => action(() => switchView("yaml")));
-$("validate").addEventListener("click", () => action(validate));
 $("save").addEventListener("click", () => action(async () => {
-  await validate();
   setDocument(await api("/api/compose", "PUT", {source: $("source").value, version}));
   await refreshBackups(); notice("配置已保存。容器更新需在宿主机执行 docker compose up -d。");
+}));
+$("diff-panel").addEventListener("toggle", () => action(async () => {
+  if (!$("diff-panel").open) return;
+  const data = await api("/api/compose/validate", "POST", {source: $("source").value, version});
+  $("diff").textContent = data.diff || "没有配置差异。";
 }));
 $("reload").addEventListener("click", () => action(async () => {
   if (dirty()) confirmAction("重新读取配置", "当前草稿将被替换，可先下载草稿。", "", load);
