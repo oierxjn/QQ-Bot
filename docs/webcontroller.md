@@ -15,7 +15,7 @@ uv run -m src.deployment
 
 初始化自动生成随机管理员密码，写入 `.webcontroller/initial-password`（仅当前用户可读），终端只提示文件路径，不显示密码内容；首次成功登录后面板自动删除该文件，请尽快用 `--reset-password` 设置自己的密码。也可在 `--init` 或 `--reset-password` 时用 `--password` 非交互指定密码，此时不生成密码文件。密码长度不限制，仅以 scrypt 哈希存储，强度由使用者自行负责。初始化从 `configs/*.toml.template` 补齐五类缺失配置，不覆盖已有文件；重复执行保留密码。设置与密码哈希存放于 `.webcontroller/`，不写入 `.env`。
 
-建议同一时间只保留一个面板实例，两侧同时编辑同一批配置时由版本检查兜底。
+建议同一时间只保留一个面板实例；同一批配置被多处同时编辑时，由版本检查兜底。
 
 默认监听 `127.0.0.1:7001`，可使用 `--port` 指定其他端口。可用 `--bg` 以后台进程运行，PID 与日志分别记录在 `.webcontroller/panel.pid`、`panel.log`，用 `--stop` 停止（面板与 Bot 一同停止）；长期运行仍建议使用下文的 systemd 服务，一个服务即可同时守护面板和 Bot。远程访问使用下文的 SSH 转发。
 
@@ -49,27 +49,27 @@ WantedBy=multi-user.target
 
 ## Bot TOML 配置管理（两种部署共用）
 
-两种部署共用同一套 Bot TOML 管理。源码部署下面板只有这一部分；Docker 部署下面板另有 Compose 部署页，通过页签切换到“Bot 配置”。只允许管理 `bot.toml`、`plugins.toml`、`groups.toml`、`ai.toml`、`scheduler.toml`，不能编辑任意宿主机文件。
+源码部署下面板只有这一部分；Docker 部署下面板另有 Compose 部署页，通过页签切换到“Bot 配置”。只允许管理 `bot.toml`、`plugins.toml`、`groups.toml`、`ai.toml`、`scheduler.toml`，不能编辑任意宿主机文件。
 
 Bot 基础配置提供表单，密码和令牌默认遮蔽；插件提供全局启用开关，群聊提供群配置增删与插件开关。复杂参数、AI 与定时任务使用完整 TOML。表单与文本共享草稿，保留注释和未知字段。缺失或语法错误的配置可以通过完整 TOML 修复；切换文件和重新读取前会提示未保存草稿。
 
-校验覆盖 TOML 语法、Bot 必需字段及类型、地址端口、插件/群聊开关和基本配置表结构，不导入插件或测试外部连接，不保证所有插件自定义参数均有效。配置版本冲突会拒绝覆盖。保存和恢复前备份当前文件，并原子替换；备份按文件存于 `.webcontroller/config-backups/`，与 Compose 备份隔离。无效原始文件也会保留备份，但恢复时仍必须通过校验。
+校验覆盖 TOML 语法、Bot 必需字段及类型、地址端口、插件/群聊开关和基本配置表结构，不导入插件或测试外部连接，不保证所有插件自定义参数均有效。配置版本冲突会拒绝覆盖。保存和恢复前备份当前文件，并原子替换；备份按文件存于 `.webcontroller/config-backups/`，与 Compose 备份隔离。原文件无效时保存同样会先备份；恢复出的内容则必须通过校验。
 
 **保存只写入磁盘。** 保存后点击工具栏的“重启 Bot”即可让子进程带着新配置立即重启（面板本身不重启，两种部署方式一致；Bot 崩溃循环中也可用，重启请求不受退避等待影响）。多个文件分别保存，不提供跨文件事务，也不会在保存时自动重启——何时应用由管理员决定。Compose 保存/恢复期间拒绝 TOML 保存/恢复；两侧的修改都不会自动触发容器操作。
 
 完整 TOML、差异、下载及备份可能含密码或 API Key，仅向已登录管理员开放。修改监听端口需手动同步 LLBot；数据库配置修改不会修改现有数据库账号密码。
 
-## 新部署
+## Docker 部署（新装）
 
 支持 Linux Docker Engine 和 WSL 内的 Linux Docker Engine。宿主机需要 Docker 与 Compose 插件，不需要 Python/uv。
 
-执行发布包中的 `bash scripts/docker_compose_init.sh` 生成 `configs/*.toml` 配置模板，手动填写后执行：
+执行发布包中的 `bash scripts/docker_compose_init.sh`，按提示从模板生成 `configs/*.toml` 并填写，然后执行：
 
 ```bash
 docker compose up -d
 ```
 
-面板是 theresa 容器的主进程：容器启动后面板先就绪，再以子进程拉起原启动链（数据库初始化、等待 QQ 登录、`main.py`）。部署目录以 `source: .` 挂载到容器内固定路径 `/deploy`，端口映射为 `127.0.0.1:7001:7001`。首次启动自动初始化，初始面板密码生成于宿主机的 `.webcontroller/initial-password`，首次成功登录后自动删除；与 LLBot WebUI 密码独立。Bot 崩溃后面板按 1 秒起步、指数延长至最长 10 分钟的退避自动重启（稳定运行 60 秒后重新从 1 秒开始）；等待 QQ 扫码期间面板照常可用。面板不使用 Docker socket，`compose.yaml` 不需要任何部署目录变量。
+面板是 theresa 容器的主进程：容器启动后面板先就绪，再以子进程拉起原启动链（数据库初始化、等待 QQ 登录、`main.py`）。部署目录以 `source: .` 挂载到容器内固定路径 `/deploy`，端口映射为 `127.0.0.1:7001:7001`。首次启动自动初始化，初始面板密码生成于宿主机的 `.webcontroller/initial-password`，首次成功登录后自动删除；与 LLBot WebUI 密码独立。Bot 崩溃后面板按 1 秒起步、指数延长至最长 10 分钟的退避自动重启（稳定运行 60 秒后重新从 1 秒开始）；等待 QQ 扫码期间面板照常可用。面板不使用 Docker socket，`compose.yaml` 无需为面板增加任何变量。
 
 访问 `http://127.0.0.1:7001`。远程服务器使用 SSH 转发：
 
@@ -81,7 +81,7 @@ ssh -L 7001:127.0.0.1:7001 user@server
 
 **面板对 Docker daemon 零访问。** 校验只执行 `docker compose config` 等客户端操作，不读取容器状态、不启停容器；容器更新和状态查询都在宿主机执行。仍不要将端口绑定到公网，面板没有公开注册入口。
 
-## 已有部署升级
+## Docker 部署（补装面板）
 
 不要重新执行 `docker_compose_init.sh`，它用于首次初始化。保留当前 `compose.yaml` 与配置，拉取新版镜像，并在 `theresa` 服务中加入面板所需的两项：`127.0.0.1:7001:7001` 端口映射和 `source: .` 到 `/deploy` 的挂载，然后执行：
 
@@ -104,7 +104,7 @@ bash scripts/setup_webcontroller.sh --init --project-name existing-project
 1. 在服务表单编辑镜像、重启策略、环境变量、端口、挂载、依赖与健康检查。结构字段接受 JSON 列表/对象；留空删除字段。点击“更新草稿”或切换到完整 YAML，同步到同一份草稿。
 2. 完整 YAML 可以配置其他 Compose 字段和增加业务服务。面板管理单个 `compose.yaml`，不支持 `include`、`extends` 或多个文件叠加。
 3. 展开“配置差异”面板会校验当前草稿并显示与磁盘文件的差异。校验把部署目录（容器内为 `/deploy`）作为 `--project-directory`、部署目录内的 `.env`（如存在）作为 `--env-file` 传给 Compose，先执行 `docker compose config --quiet`，再检查相对 bind 源：部署目录内的源必须已存在，防止误挂载空目录；绝对路径源无法在容器内验证，仅透传。
-4. 点击“校验并保存”直接保存：校验通过后自动备份当前文件并原子替换。若文件已被其他操作修改，返回冲突并保留草稿，可下载草稿后重新读取比较。
+4. 点击“校验并保存”保存：校验通过后自动备份当前文件并原子替换。若文件已被其他操作修改，返回冲突并保留草稿，可下载草稿后重新读取比较。
 5. 面板不执行任何容器操作。保存后需在宿主机执行 `docker compose up -d` 更新容器；变更端口、挂载或环境变量通常需要重建容器，仅 `restart` 不会应用这些变化。删除服务配置后，旧容器仍可能存在，需在宿主机确认后处理。
 
 需要长期停用某个服务时，为它设置 profiles（服务表单或完整 YAML）；宿主机执行 `docker compose up -d` 时只会启动没有 profiles 的服务，不使用 `.env` 中的 `COMPOSE_PROFILES`。有 profile 的服务在宿主机显式启动。镜像按 Compose 默认策略拉取，不强制更新所有 latest 镜像；修改镜像版本可明确触发升级。
@@ -144,7 +144,7 @@ docker compose up -d
 
 镜像内置 Docker CLI 与 Compose 插件，仅用于客户端校验，容器不挂载 Docker socket。镜像版本变更直接修改 `compose.yaml` 中 theresa 服务的 `image` 字段。
 
-如果构建机器依赖 HTTP 代理，Docker 服务代理负责镜像拉取；BuildKit 的认证请求也可能由 Docker CLI 进程发起，需要同时给构建进程设置代理。构建阶段的 `uv sync` 则使用 build args。例如（将地址替换为构建机器可达的代理）：
+如果构建机器依赖 HTTP 代理，镜像拉取走 Docker 服务的代理；BuildKit 的认证请求也可能由 Docker CLI 进程发起，需要同时给构建进程设置代理。构建阶段的 `uv sync` 则使用 build args。例如（将地址替换为构建机器可达的代理）：
 
 ```bash
 BUILD_PROXY=http://192.168.134.1:10809

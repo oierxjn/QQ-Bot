@@ -114,8 +114,8 @@ async function configBackups() {
       if (configDirty()) throw new Error("请先保存或下载配置草稿，再恢复备份。");
       const endpoint = configPath("/backups/" + backup.id), revision = configVersion;
       const preview = await api(endpoint);
-      confirmAction("恢复配置文件", "恢复前会备份当前文件；恢复后请手动重启 Bot。", preview.diff, async () => {
-        await api(endpoint + "/restore", "POST", {version: revision}); await readConfig(); notice("备份已恢复到磁盘；请手动重启 Bot。");
+      confirmAction("恢复配置文件", "恢复前会备份当前文件；恢复后点击“重启 Bot”应用。", preview.diff, async () => {
+        await api(endpoint + "/restore", "POST", {version: revision}); await readConfig(); notice("备份已恢复到磁盘；点击“重启 Bot”应用新配置。");
       });
     })); row.append(label, button); $("config-backups").append(row);
   }

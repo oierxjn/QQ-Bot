@@ -134,7 +134,7 @@ bash scripts/docker_compose_init.sh
 
 > 首次启动只需关注该配置文件
 
-对于标注 + 的配置项，请勿在 Docker compose 部署时手动修改（无论直接编辑文件还是通过面板）：初始化脚本已把它们改写为容器网络的专用值——`server_address` 指向 `llbot`、`database_address` 指向 `db`、`database_passwd` 与 `db` 服务的 `POSTGRES_PASSWORD` 成套——模板默认的 `127.0.0.1` 在容器内指向容器自身，手动改回会直接断连
+对于标注 + 的配置项，请勿在 Docker compose 部署时手动修改（无论直接编辑文件还是通过面板）：初始化脚本已把它们改写为容器网络的专用值（`server_address` 指向 `llbot`、`database_address` 指向 `db`、`database_passwd` 与 `db` 服务的 `POSTGRES_PASSWORD` 成套）；模板默认的 `127.0.0.1` 在容器内指向容器自身，手动改回会直接断连
 
 请特别关注标注 \* 的配置项
 

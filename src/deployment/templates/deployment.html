@@ -25,7 +25,7 @@
       <nav class="tabs" aria-label="管理内容"><button id="compose-page">Compose 部署</button><button id="configs-page">Bot 配置</button></nav>
       <section id="config-area" hidden>
         <div class="heading"><h1>Bot 配置</h1><span id="config-state" class="badge">正在读取…</span></div>
-        <p>保存只修改配置文件。请手动重启 Bot；运行中的配置是否生效尚未确认。监听端口变化也需在 LLBot 中同步调整。</p>
+        <p>保存只修改配置文件，点击“重启 Bot”应用新配置。监听端口变化也需在 LLBot 中同步调整。</p>
         <label for="config-file">配置文件</label><select id="config-file"></select>
         <div class="toolbar"><button id="config-reload">重新读取</button><button id="config-download">下载草稿</button><button id="config-restart-bot" hidden>重启 Bot</button><button id="config-save" class="primary">校验并保存配置</button></div>
         <nav class="tabs" aria-label="Bot 配置编辑方式"><button id="config-form-tab">常用配置</button><button id="config-text-tab">完整 TOML</button></nav>
