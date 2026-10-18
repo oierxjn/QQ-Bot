@@ -99,7 +99,7 @@ uv run scripts/create_tables.py
 
 ### 方式二：Docker compose 部署
 
-> 对于 Windows 用户，下面的脚本需在已安装 Docker Engine 的 WSL 中执行；独立部署面板使用 Linux 路径，不访问 Docker daemon。
+> 对于 Windows 用户，下面的脚本需在已安装 Docker Engine 的 WSL 中执行。
 
 从 [Github Releases](https://github.com/crane-fog/QQ-Bot/releases/latest) 下载最新 `Theresa-<version>-Docker.tar.gz`，解压、进入目录、执行脚本
 
