@@ -69,39 +69,27 @@ ssh -L 3080:localhost:3080 user@remote_host
     - 消息格式选择“CQ码”
     - 保存
 
-#### 3. 编辑 configs/\*.toml 配置文件
+#### 3. 启动面板和 Bot
 
-```bash
-cp configs/bot.toml.template configs/bot.toml
-cp configs/ai.toml.template configs/ai.toml
-cp configs/groups.toml.template configs/groups.toml
-cp configs/plugins.toml.template configs/plugins.toml
-cp configs/scheduler.toml.template configs/scheduler.toml
-```
-
-对于 `configs` 文件夹下的每个配置文件，需要复制一份去掉 `.template` 后缀的文件，并根据需要修改配置项，bot 启动时如无法找到配置文件将报错
-
-首次启动请务必修改 `configs/bot.toml` 中的部分配置项，详见 [配置文件解释](#配置文件解释)
-
-#### 4. 初始化数据库
-
-尽管 bot 本身并不强制要求使用数据库，但大部分主要插件都需要数据库支持
-
-若 `bot.toml` 中 `database_enable = true`，首次启动前需有可用的 PostgreSQL 数据库，并手动执行建表脚本
-
-```bash
-uv run scripts/create_tables.py
-```
-
-#### 5. 启动 Bot
-
-完成 `uv sync --no-dev` 后，运行部署面板即可自动初始化，并通过浏览器编辑五类 TOML 配置；面板不需要 Docker，也不依赖 QQ 登录或数据库连接。面板会拉起并守护 Bot，无需单独运行 `main.py`：
+完成 `uv sync --no-dev` 后，运行部署面板；不需要 Docker，也不依赖 QQ 登录或数据库连接：
 
 ```bash
 uv run -m src.deployment
 ```
 
-初始化自动生成随机管理员密码，存于 `.webcontroller/initial-password`，首次成功登录后自动删除；同时只从模板补齐缺失文件，不覆盖已有配置。访问 `http://127.0.0.1:7001`。面板可用 `--bg` 后台运行、`--stop` 停止（面板与 Bot 一同停止）；长期运行建议编写 systemd 服务脚本，一个服务即可同时守护面板和 Bot。Windows 和 Linux 均支持，更多启动、密码重置及后台运行说明见 [WebController 文档](docs/webcontroller.md)。
+面板会从 `configs/*.toml.template` 自动生成缺失的配置文件（已有文件不覆盖，无需手动复制），随后拉起并守护 Bot，无需单独运行 `main.py`。初始管理员密码生成于 `.webcontroller/initial-password`，首次成功登录后自动删除；浏览器打开 `http://127.0.0.1:7001`，在“Bot 配置”中按 [配置文件解释](#配置文件解释) 修改必要配置项（数据库连接、owner_id 等）并保存。修改配置后需重启面板使 Bot 加载新配置：`--stop` 停止后重新运行（面板与 Bot 一同重启）；也可用 `--bg` 后台运行。Windows 和 Linux 均支持，更多启动、密码重置说明见 [WebController 文档](docs/webcontroller.md)。
+
+#### 4. 初始化数据库（可选）
+
+尽管 bot 本身并不强制要求使用数据库，但大部分主要插件都需要数据库支持
+
+建表脚本从 `configs/bot.toml` 读取连接信息，因此在面板生成配置并填好数据库连接后执行（若 `database_enable = true`）：
+
+```bash
+uv run scripts/create_tables.py
+```
+
+执行完成后重启面板，Bot 即以新配置连接数据库。
 
 > 如果你想为 `src/Api.py` 添加尚未实现在该项目中的 LLBot api，请参考 [LLBot api 文档](https://llonebot.apifox.cn/)
 
