@@ -152,10 +152,8 @@ $("config-form-tab").addEventListener("click", () => action(() => switchConfigVi
 $("config-text-tab").addEventListener("click", () => action(() => switchConfigView("text")));
 $("config-validate").addEventListener("click", () => action(validateConfig));
 $("config-save").addEventListener("click", () => action(async () => {
-  const result = await validateConfig(), body = configBody(), endpoint = configPath();
-  confirmAction("保存 Bot 配置", "保存前备份当前文件。保存后请手动重启 Bot。", result.diff, async () => {
-    await api(endpoint, "PUT", body); await readConfig(); notice("配置已保存到磁盘；请手动重启 Bot，运行中是否生效尚未确认。");
-  });
+  await validateConfig();
+  await api(configPath(), "PUT", configBody()); await readConfig(); notice("配置已保存；请手动重启 Bot。");
 }));
 $("config-reload").addEventListener("click", () => action(async () => {
   if (configDirty()) confirmAction("重新读取配置", "未保存的配置草稿会被替换，可先下载。", "", readConfig); else await readConfig();

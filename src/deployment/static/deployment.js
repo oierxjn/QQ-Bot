@@ -134,10 +134,9 @@ $("form-tab").addEventListener("click", () => action(() => switchView("form")));
 $("yaml-tab").addEventListener("click", () => action(() => switchView("yaml")));
 $("validate").addEventListener("click", () => action(validate));
 $("save").addEventListener("click", () => action(async () => {
-  const result = await validate(); const source = $("source").value, originalVersion = version;
-  confirmAction("保存部署配置", "保存前会备份当前文件；保存不会立即修改运行中的容器。容器更新需在宿主机执行 docker compose up -d。", result.diff, async () => {
-    setDocument(await api("/api/compose", "PUT", {source, version: originalVersion})); await refreshBackups(); notice("配置已保存。容器更新需在宿主机执行 docker compose up -d。");
-  });
+  await validate();
+  setDocument(await api("/api/compose", "PUT", {source: $("source").value, version}));
+  await refreshBackups(); notice("配置已保存。容器更新需在宿主机执行 docker compose up -d。");
 }));
 $("reload").addEventListener("click", () => action(async () => {
   if (dirty()) confirmAction("重新读取配置", "当前草稿将被替换，可先下载草稿。", "", load);
