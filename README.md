@@ -93,7 +93,7 @@ uv run -m src.deployment
 uv run scripts/create_tables.py
 ```
 
-执行完成后重启面板，Bot 即以新配置连接数据库。
+执行完成后在面板点击“重启 Bot”，Bot 即以新配置连接数据库。
 
 > 如果你想为 `src/Api.py` 添加尚未实现在该项目中的 LLBot api，请参考 [LLBot api 文档](https://llonebot.apifox.cn/)
 
