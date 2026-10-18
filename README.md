@@ -142,7 +142,6 @@ bash scripts/docker_compose_init.sh
 | ---------------------- | ---------------------------------------------------------------- |
 | server_address         | +\* 监听端的监听地址（即 bot 上报事件的目标地址）                |
 | client_address         | +\* 监听端的事件上报的地址（即 bot 接收事件的监听地址）          |
-| web_controller_address | 旧内嵌面板地址，目前弃用；独立面板默认使用 7001 端口            |
 | bot_name               | 目前无实际用途，bot 的名字                                       |
 | debug                  | 是否开启日志调试模式（true/false）                               |
 | database_enable        | +\* 是否启用 PostgreSQL 数据库（true/false）                     |

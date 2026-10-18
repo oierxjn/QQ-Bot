@@ -17,7 +17,7 @@ uv run -m src.deployment
 
 建议同一时间只保留一个面板实例，两侧同时编辑同一批配置时由版本检查兜底。
 
-默认监听 `127.0.0.1:7001`，可使用 `--port` 指定其他端口。可用 `--bg` 以后台进程运行，PID 与日志分别记录在 `.webcontroller/panel.pid`、`panel.log`，用 `--stop` 停止（面板与 Bot 一同停止）；长期运行仍建议使用下文的 systemd 服务，一个服务即可同时守护面板和 Bot。远程访问使用下文的 SSH 转发。旧 Bot 配置中的 `web_controller_address` 不控制独立面板，仍保留以兼容 Bot 配置加载。
+默认监听 `127.0.0.1:7001`，可使用 `--port` 指定其他端口。可用 `--bg` 以后台进程运行，PID 与日志分别记录在 `.webcontroller/panel.pid`、`panel.log`，用 `--stop` 停止（面板与 Bot 一同停止）；长期运行仍建议使用下文的 systemd 服务，一个服务即可同时守护面板和 Bot。远程访问使用下文的 SSH 转发。
 
 忘记密码时执行：
 

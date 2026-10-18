@@ -43,7 +43,6 @@ class Bot:
         required_configs = {
             "server_address": self.bot_config.get("Init", {}).get("server_address"),
             "client_address": self.bot_config.get("Init", {}).get("client_address"),
-            "web_controller_address": self.bot_config.get("Init", {}).get("web_controller_address"),
             "bot_name": self.bot_config.get("Init", {}).get("bot_name"),
             "debug": self.bot_config.get("Init", {}).get("debug"),
             "database_enable": self.bot_config.get("Init", {}).get("database_enable"),
@@ -72,7 +71,6 @@ class Bot:
         # 将配置值分配给实例变量
         self.server_address: str = required_configs["server_address"]
         self.client_address: str = required_configs["client_address"]
-        self.web_controller_address: str = required_configs["web_controller_address"]
         self.bot_name: str = required_configs["bot_name"]
         self.debug: bool = required_configs["debug"]
         self.database_enable: bool = required_configs["database_enable"]

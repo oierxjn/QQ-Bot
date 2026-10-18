@@ -18,7 +18,6 @@ BOT_FIELDS = {
     "Init": {
         "server_address": str,
         "client_address": str,
-        "web_controller_address": str,
         "bot_name": str,
         "debug": bool,
         "database_enable": bool,
@@ -164,11 +163,7 @@ class ConfigStore:
             if not path or len(path) > 3 or not all(isinstance(key, str) and key for key in path):
                 raise DeploymentError("表单字段路径无效")
             if name == "bot.toml":
-                if (
-                    len(path) != 2
-                    or path[1] not in BOT_FIELDS.get(path[0], {})
-                    or path[1] == "web_controller_address"
-                ):
+                if len(path) != 2 or path[1] not in BOT_FIELDS.get(path[0], {}):
                     raise DeploymentError("不支持的表单字段")
             elif name == "plugins.toml":
                 if len(path) != 2 or path[1] != "enable" or path[0] not in document:
