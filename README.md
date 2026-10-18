@@ -77,7 +77,11 @@ ssh -L 3080:localhost:3080 user@remote_host
 uv run -m src.deployment
 ```
 
-面板会从 `configs/*.toml.template` 自动生成缺失的配置文件，随后拉起并守护 Bot。初始管理员密码生成于 `.webcontroller/initial-password`，首次成功登录后自动删除；浏览器打开 `http://127.0.0.1:7001`，在“Bot 配置”中按 [配置文件解释](#配置文件解释) 修改必要配置项并保存。修改配置并保存后，点击面板上的“重启 Bot”即应用新配置；`--bg` 可后台运行。Windows 和 Linux 均支持，更多启动、密码重置说明见 [WebController 文档](docs/webcontroller.md)。
+面板会从 `configs/*.toml.template` 自动生成缺失的配置文件，随后拉起并守护 Bot。初始管理员密码生成于 `.webcontroller/initial-password`，首次成功登录后自动删除。
+
+浏览器打开 `http://127.0.0.1:7001`，在“Bot 配置”中按 [配置文件解释](#配置文件解释) 修改必要配置项并保存。对于远程开发环境，建议在本地使用 ssh 端口转发。
+
+修改配置并保存后，点击面板上的“重启 Bot”即应用新配置；`--bg` 可后台运行。更多说明见 [WebController 文档](docs/webcontroller.md)。
 
 #### 4. 初始化数据库（可选）
 
@@ -130,7 +134,7 @@ bash scripts/docker_compose_init.sh
 
 > 首次启动只需关注该配置文件
 
-对于标注 + 的配置项，请勿在 Docker compose 部署时手动修改
+对于标注 + 的配置项，请勿在 Docker compose 部署时手动修改（无论直接编辑文件还是通过面板）：初始化脚本已把它们改写为容器网络的专用值——`server_address` 指向 `llbot`、`database_address` 指向 `db`、`database_passwd` 与 `db` 服务的 `POSTGRES_PASSWORD` 成套——模板默认的 `127.0.0.1` 在容器内指向容器自身，手动改回会直接断连
 
 请特别关注标注 \* 的配置项
 
