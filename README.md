@@ -77,7 +77,7 @@ ssh -L 3080:localhost:3080 user@remote_host
 uv run -m src.deployment
 ```
 
-面板会从 `configs/*.toml.template` 自动生成缺失的配置文件，随后拉起并守护 Bot。初始管理员密码生成于 `.webcontroller/initial-password`，首次成功登录后自动删除；浏览器打开 `http://127.0.0.1:7001`，在“Bot 配置”中按 [配置文件解释](#配置文件解释) 修改必要配置项（数据库连接、owner_id 等）并保存。修改配置并保存后，点击面板上的“重启 Bot”即应用新配置（面板无需重启）；`--bg` 可后台运行。Windows 和 Linux 均支持，更多启动、密码重置说明见 [WebController 文档](docs/webcontroller.md)。
+面板会从 `configs/*.toml.template` 自动生成缺失的配置文件，随后拉起并守护 Bot。初始管理员密码生成于 `.webcontroller/initial-password`，首次成功登录后自动删除；浏览器打开 `http://127.0.0.1:7001`，在“Bot 配置”中按 [配置文件解释](#配置文件解释) 修改必要配置项并保存。修改配置并保存后，点击面板上的“重启 Bot”即应用新配置；`--bg` 可后台运行。Windows 和 Linux 均支持，更多启动、密码重置说明见 [WebController 文档](docs/webcontroller.md)。
 
 #### 4. 初始化数据库（可选）
 
@@ -116,15 +116,13 @@ bash scripts/docker_compose_init.sh
 >     - "3000:3000"
 > ```
 
-执行 `docker compose up -d`，等待镜像拉取完毕，容器启动后，执行 `docker compose logs`，日志中将显示 QQ 登录二维码（也可直接在浏览器打开 `http://localhost:3080` 登录 llbot WebUI 后查看），手机扫码登录，务必勾选“下次登录无需手机确认”
+执行 `docker compose up -d`。面板作为 theresa 容器的主进程自动启动并拉起 Bot，浏览器打开 `http://127.0.0.1:7001` 即可使用（初始管理员密码生成于 `.webcontroller/initial-password`，首次登录后自动删除），等待 QQ 登录期间面板照常可用。
 
-> 宿主机 `configs/` 目录（以及 `llbot_config/` 目录）会被挂载到容器中，在修改 bot 配置文件后，可使用 `docker compose restart theresa` 使配置生效
+容器启动后执行 `docker compose logs`，日志中将显示 QQ 登录二维码（也可直接在浏览器打开 `http://localhost:3080` 登录 llbot WebUI 后查看），手机扫码登录，务必勾选“下次登录无需手机确认”
 
-### WebController 部署面板
+> 宿主机 `configs/` 目录（以及 `llbot_config/` 目录）会被挂载到容器中。修改配置后，在面板上点击“重启 Bot”即可生效（也可在宿主机执行 `docker compose restart theresa`）
 
-源码和 Docker 部署均支持部署面板，提供 Bot TOML 常用表单、文本编辑、校验、备份和恢复。Docker 部署还提供 Compose 表单/YAML 编辑：面板是 theresa 容器的主进程，负责拉起并守护 Bot，面板先就绪，QQ 未登录或 Bot 崩溃时仍可访问。首次启动自动初始化，初始密码生成于 `.webcontroller/initial-password`；执行 `docker compose up -d` 后访问 `http://127.0.0.1:7001`。面板不依赖 QQ 登录或数据库，也不访问 Docker daemon。
 
-已有部署升级、SSH 转发、权限说明与配置恢复见 **[WebController 文档](docs/webcontroller.md)**。
 
 ### 配置文件解释
 
