@@ -97,7 +97,7 @@ bash scripts/setup_webcontroller.sh --init --project-name existing-project
 
 `scripts/setup_webcontroller.sh` 保留为宿主机维护入口（重置密码、登记保护配置等），内部通过 `docker compose run --entrypoint python3 theresa` 执行同一命令。密码哈希、会话密钥、受保护配置和备份保存在 `.webcontroller/`；文件权限为 0600、状态目录为 0700。这些文件不应提交到 Git 或打包进镜像。
 
-面板把部署目录挂载到容器内 `/deploy`，并以该路径作为 `--project-directory`。移动部署目录后状态记录中的路径不再匹配，需删除 `.webcontroller/settings.json` 重新初始化（密码和备份保留）。
+面板把部署目录挂载到容器内 `/deploy`，并以该路径作为 `--project-directory`。移动部署目录后状态记录中的路径不再匹配，需删除 `.webcontroller/settings.json` 重新初始化（密码和备份保留）。容器内以 root 写入 `.webcontroller/` 后，这些文件在宿主机上归 root 所有；切换回源码运行面板前需先 `chown` 给启动用户，否则面板读取状态文件会因权限失败（Bot 不受影响，但面板不可用）。
 
 ## 编辑与保存
 
@@ -166,6 +166,6 @@ RUN_WEB_DOCKER_TESTS=1 uv run pytest tests/test_deployment_docker.py
 
 如果测试进程本身也在 Linux 容器中运行，需要挂载 Docker socket、将测试目录以相同绝对路径挂载，并使用 `--network host`。
 
-更早版本的验证记录（2026-10-06 前后）针对含一键应用、容器状态与 Docker socket 的设计，相关结论不再逐条适用。当前版本（面板为容器主进程并守护 Bot、无独立面板镜像）在 Windows 运行全量测试：222 项通过，3 项跳过——1 项 Linux Docker 集成测试因本机缺少 Docker Engine，2 项 Chromium 浏览器测试未启用；theresa 容器内部署流程（面板拉起启动链、自动初始化、登录、保存）需在 Linux/WSL 验证。
+更早版本的验证记录（2026-10-06 前后）针对含一键应用、容器状态与 Docker socket 的设计，相关结论不再逐条适用。当前版本（面板为容器主进程并守护 Bot、无独立面板镜像、模块路径 src.deployment）在 Windows 运行全量测试：223 项通过、3 项跳过，其中 2 项 Chromium 浏览器测试已单独启用并通过，1 项 Linux Docker 集成测试因本机缺少 Docker Engine 跳过；theresa 容器内部署流程（面板拉起启动链、自动初始化、登录、保存）需在 Linux/WSL 验证。
 
 实现依据：[Compose config](https://docs.docker.com/reference/cli/docker/compose/config/)、[Profiles](https://docs.docker.com/compose/how-tos/profiles/)、[项目名称](https://docs.docker.com/compose/how-tos/project-name/)。
