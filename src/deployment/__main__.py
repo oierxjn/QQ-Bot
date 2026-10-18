@@ -9,6 +9,7 @@ import sys
 import time
 from pathlib import Path
 
+from . import default_source_root
 from .auth import create_credentials
 from .config import ComposeDocument, DeploymentError, atomic_write
 from .runtime import detect_runtime, serve
@@ -52,10 +53,12 @@ def start_background(root, port):
             raise SystemExit(f"面板已在后台运行（PID {recorded}），如需重启请先执行 --stop")
         record.unlink()
     log_path = state / "panel.log"
+    # -m resolves the package through sys.path, so the child must run with the
+    # deploy root as cwd; an arbitrary caller cwd would not find it.
     command = [
         sys.executable,
         "-m",
-        "web.deployment",
+        "src.deployment",
         "--root",
         str(root),
         "--port",
@@ -69,6 +72,7 @@ def start_background(root, port):
     with open(log_path, "ab") as log:
         child = subprocess.Popen(
             command,
+            cwd=default_source_root(),
             stdin=subprocess.DEVNULL,
             stdout=log,
             stderr=log,
@@ -81,7 +85,7 @@ def start_background(root, port):
         raise SystemExit(f"后台面板启动失败，请查看日志：{log_path}")
     print(f"面板已在后台运行（PID {child.pid}）")
     print(f"日志：{log_path}")
-    print("停止：uv run -m web.deployment --stop")
+    print("停止：uv run -m src.deployment --stop")
     print_initial_password(root)
     return child
 
@@ -138,7 +142,7 @@ def run_setup(root, mode, args, parser):
             print("管理员密码已重置，重启面板后使用新密码登录")
             return
         initialize_source(root, args.password)
-        print("源码面板初始化完成，执行 uv run -m web.deployment 启动面板和 Bot")
+        print("源码面板初始化完成，执行 uv run -m src.deployment 启动面板和 Bot")
         print_initial_password(root)
         return
     project = discover_project(root, args.project_name)

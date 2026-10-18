@@ -1,6 +1,6 @@
 import pytest
 
-from web.deployment.config import ComposeDocument, DeploymentError
+from src.deployment.config import ComposeDocument, DeploymentError
 
 SOURCE = """# deployment comment
 services:
@@ -70,7 +70,7 @@ def test_failed_replace_keeps_original(document, monkeypatch):
             raise OSError("disk error")
         original_replace(source, target)
 
-    monkeypatch.setattr("web.deployment.config.os.replace", replace)
+    monkeypatch.setattr("src.deployment.config.os.replace", replace)
     with pytest.raises(OSError):
         document.save(SOURCE.replace("postgres:18", "postgres:19"), document.read()["version"])
     assert document.path.read_text(encoding="utf-8") == SOURCE

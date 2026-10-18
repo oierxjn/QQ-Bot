@@ -8,8 +8,8 @@ import uuid
 
 import pytest
 
-from web.deployment.config import ComposeDocument
-from web.deployment.runner import ComposeRunner
+from src.deployment.config import ComposeDocument
+from src.deployment.runner import ComposeRunner
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("RUN_WEB_DOCKER_TESTS") != "1"

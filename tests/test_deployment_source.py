@@ -6,11 +6,11 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
+from src.deployment.config import DeploymentError
+from src.deployment.runtime import build_app
+from src.deployment.setup import initialize_source
 from tests.test_deployment_api import login
 from tests.test_deployment_api import panel as panel_fixture
-from web.deployment.config import DeploymentError
-from web.deployment.runtime import build_app
-from web.deployment.setup import initialize_source
 
 compose_panel = panel_fixture
 
@@ -95,7 +95,7 @@ def test_source_cli_serves_without_compose(source_root):
         [
             sys.executable,
             "-m",
-            "web.deployment",
+            "src.deployment",
             "--root",
             str(source_root),
             "--port",
@@ -130,7 +130,7 @@ def test_source_cli_background_start_and_stop(source_root):
 
     import httpx
 
-    from web.deployment.__main__ import start_background, stop_background
+    from src.deployment.__main__ import start_background, stop_background
 
     initialize_source(source_root, "test-password")
     with socket.socket() as listener:
@@ -163,7 +163,7 @@ def test_source_cli_background_start_and_stop(source_root):
 def test_background_refuses_duplicate_and_cleans_stale(source_root):
     import os
 
-    from web.deployment.__main__ import process_alive, start_background, stop_background
+    from src.deployment.__main__ import process_alive, start_background, stop_background
 
     initialize_source(source_root, "test-password")
     record = source_root / ".webcontroller" / "panel.pid"

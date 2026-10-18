@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from web.deployment.config import DeploymentError
-from web.deployment.toml_config import ConfigStore
+from src.deployment.config import DeploymentError
+from src.deployment.toml_config import ConfigStore
 
 
 @pytest.fixture
@@ -98,7 +98,7 @@ def test_failed_atomic_replace_keeps_original(store, monkeypatch):
     def fail_replace(*args):
         raise PermissionError("secret path must not be exposed")
 
-    monkeypatch.setattr("web.deployment.config.os.replace", fail_replace)
+    monkeypatch.setattr("src.deployment.config.os.replace", fail_replace)
     with pytest.raises(DeploymentError, match="写入配置失败") as error:
         store.save("plugins.toml", original["source"].replace("false", "true"), original["version"])
     assert "secret" not in str(error.value)

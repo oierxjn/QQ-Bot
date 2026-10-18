@@ -9,12 +9,12 @@ import time
 import pytest
 import uvicorn
 
+from src.deployment.app import create_app
+from src.deployment.auth import create_credentials
+from src.deployment.config import ComposeDocument
+from src.deployment.setup import initialize_source
 from tests.test_deployment_api import FakeRunner
 from tests.test_deployment_config import SOURCE
-from web.deployment.app import create_app
-from web.deployment.auth import create_credentials
-from web.deployment.config import ComposeDocument
-from web.deployment.setup import initialize_source
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("RUN_WEB_BROWSER_TESTS") != "1",
@@ -28,7 +28,7 @@ def test_source_browser_form_text_conflict_restore_and_groups(tmp_path):
 
     from playwright.sync_api import expect, sync_playwright
 
-    from web.deployment.runtime import build_app
+    from src.deployment.runtime import build_app
 
     (tmp_path / "configs").mkdir()
     for template in Path("configs").glob("*.toml.template"):

@@ -8,10 +8,10 @@
 
 ```bash
 uv sync --no-dev
-uv run -m web.deployment
+uv run -m src.deployment
 ```
 
-这一条命令会启动面板（自动初始化）并由它拉起 Bot；无需再运行 `main.py`。也可先执行 `uv run -m web.deployment --init` 只初始化不启动。
+这一条命令会启动面板（自动初始化）并由它拉起 Bot；无需再运行 `main.py`。也可先执行 `uv run -m src.deployment --init` 只初始化不启动。
 
 初始化自动生成随机管理员密码，写入 `.webcontroller/initial-password`（仅当前用户可读），终端只提示文件路径，不显示密码内容；首次成功登录后面板自动删除该文件，请尽快用 `--reset-password` 设置自己的密码。也可在 `--init` 或 `--reset-password` 时用 `--password` 非交互指定密码，此时不生成密码文件。密码长度不限制，仅以 scrypt 哈希存储，强度由使用者自行负责。初始化从 `configs/*.toml.template` 补齐五类缺失配置，不覆盖已有文件；重复执行保留密码。设置与密码哈希存放于 `.webcontroller/`，不写入 `.env`。
 
@@ -22,7 +22,7 @@ uv run -m web.deployment
 忘记密码时执行：
 
 ```bash
-uv run -m web.deployment --reset-password
+uv run -m src.deployment --reset-password
 ```
 
 重启面板后使用新密码登录。Linux 状态目录与文件限制为当前用户访问；Windows 使用用户目录的 Windows ACL，请将项目放在可信用户目录内，不与不可信用户共享配置和备份。
@@ -37,7 +37,7 @@ After=network.target
 [Service]
 User=your-user
 WorkingDirectory=/home/your-user/QQ-Bot
-ExecStart=/home/your-user/.local/bin/uv run --frozen --no-dev -m web.deployment
+ExecStart=/home/your-user/.local/bin/uv run --frozen --no-dev -m src.deployment
 Restart=on-failure
 UMask=0077
 

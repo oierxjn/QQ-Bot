@@ -5,4 +5,4 @@ DEPLOY_DIR="$(cd "$(dirname "$0")/.." && pwd -P)"
 command -v docker >/dev/null || { echo "需要安装 Docker 和 Compose 插件" >&2; exit 1; }
 docker compose version >/dev/null
 docker compose --project-directory "$DEPLOY_DIR" -f "$DEPLOY_DIR/compose.yaml" \
-    run --rm --no-deps --entrypoint python3 theresa -m web.deployment "$@"
+    run --rm --no-deps --entrypoint python3 theresa -m src.deployment "$@"

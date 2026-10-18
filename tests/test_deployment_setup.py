@@ -4,17 +4,17 @@ import sys
 
 import pytest
 
-from tests.test_deployment_config import SOURCE
-from web.deployment import default_source_root
-from web.deployment.__main__ import main
-from web.deployment.auth import Authentication
-from web.deployment.config import DeploymentError
-from web.deployment.setup import (
+from src.deployment import default_source_root
+from src.deployment.__main__ import main
+from src.deployment.auth import Authentication
+from src.deployment.config import DeploymentError
+from src.deployment.setup import (
     discover_project,
     initialize,
     initialize_source,
 )
-from web.deployment.toml_config import CONFIG_NAMES
+from src.deployment.toml_config import CONFIG_NAMES
+from tests.test_deployment_config import SOURCE
 
 
 def test_initialization_preserves_existing_files_and_credentials(tmp_path):
@@ -64,7 +64,7 @@ def test_new_deployment_honors_env_project_name(tmp_path):
 def test_default_source_root_points_at_checkout():
     root = default_source_root()
     assert (root / "pyproject.toml").is_file()
-    assert (root / "web" / "deployment").is_dir()
+    assert (root / "src" / "deployment").is_dir()
 
 
 def test_source_main_defaults_to_package_root(tmp_path, monkeypatch):
@@ -72,8 +72,8 @@ def test_source_main_defaults_to_package_root(tmp_path, monkeypatch):
     configs.mkdir()
     for name in CONFIG_NAMES:
         (configs / f"{name}.template").write_text("", encoding="utf-8")
-    monkeypatch.setattr(sys, "argv", ["web.deployment", "--init"])
-    monkeypatch.setattr("web.deployment.runtime.default_source_root", lambda: tmp_path)
+    monkeypatch.setattr(sys, "argv", ["src.deployment", "--init"])
+    monkeypatch.setattr("src.deployment.runtime.default_source_root", lambda: tmp_path)
     main()
     settings = json.loads(
         (tmp_path / ".webcontroller" / "settings.json").read_text(encoding="utf-8")
@@ -120,7 +120,7 @@ class _ImmediateServer:
 def test_serve_auto_initializes(tmp_path, monkeypatch):
     import sys as _sys
 
-    from web.deployment import runtime
+    from src.deployment import runtime
 
     configs = tmp_path / "configs"
     configs.mkdir()
@@ -134,8 +134,8 @@ def test_serve_auto_initializes(tmp_path, monkeypatch):
         stop.set()
 
     monkeypatch.setattr(runtime, "supervise_bot", fake_supervise)
-    monkeypatch.setattr("web.deployment.runtime.uvicorn.Server", _ImmediateServer)
-    monkeypatch.setattr(_sys, "argv", ["web.deployment", "--root", str(tmp_path)])
+    monkeypatch.setattr("src.deployment.runtime.uvicorn.Server", _ImmediateServer)
+    monkeypatch.setattr(_sys, "argv", ["src.deployment", "--root", str(tmp_path)])
     main()
     assert (tmp_path / ".webcontroller" / "settings.json").is_file()
     assert (tmp_path / ".webcontroller" / "initial-password").is_file()
@@ -146,7 +146,7 @@ def test_serve_auto_initializes(tmp_path, monkeypatch):
 def test_compose_serve_auto_initializes(tmp_path, monkeypatch):
     import sys
 
-    from web.deployment import runtime
+    from src.deployment import runtime
 
     (tmp_path / "compose.yaml").write_text(SOURCE, encoding="utf-8")
 
@@ -155,8 +155,8 @@ def test_compose_serve_auto_initializes(tmp_path, monkeypatch):
 
     monkeypatch.setattr(runtime, "supervise_bot", no_supervise)
     monkeypatch.setattr(runtime, "PANEL_DEPLOY_MOUNT", str(tmp_path))
-    monkeypatch.setattr("web.deployment.runtime.uvicorn.Server", _ImmediateServer)
-    monkeypatch.setattr(sys, "argv", ["web.deployment"])
+    monkeypatch.setattr("src.deployment.runtime.uvicorn.Server", _ImmediateServer)
+    monkeypatch.setattr(sys, "argv", ["src.deployment"])
     main()
     settings = json.loads(
         (tmp_path / ".webcontroller" / "settings.json").read_text(encoding="utf-8")
@@ -172,7 +172,7 @@ def test_compose_serve_auto_initializes(tmp_path, monkeypatch):
 def test_compose_serve_supervises_entrypoint_chain(tmp_path, monkeypatch):
     import sys
 
-    from web.deployment import runtime
+    from src.deployment import runtime
 
     (tmp_path / "compose.yaml").write_text(SOURCE, encoding="utf-8")
     recorded = {}
@@ -184,8 +184,8 @@ def test_compose_serve_supervises_entrypoint_chain(tmp_path, monkeypatch):
 
     monkeypatch.setattr(runtime, "supervise_bot", fake_supervise)
     monkeypatch.setattr(runtime, "PANEL_DEPLOY_MOUNT", str(tmp_path))
-    monkeypatch.setattr("web.deployment.runtime.uvicorn.Server", _ImmediateServer)
-    monkeypatch.setattr(sys, "argv", ["web.deployment"])
+    monkeypatch.setattr("src.deployment.runtime.uvicorn.Server", _ImmediateServer)
+    monkeypatch.setattr(sys, "argv", ["src.deployment"])
     main()
     assert recorded["command"] == ["bash", "scripts/entrypoint.sh", "python3", "main.py"]
     assert recorded["cwd"] == runtime.default_source_root().resolve()
@@ -196,7 +196,7 @@ async def test_supervise_bot_restarts_then_stops(tmp_path):
     import asyncio
     import sys
 
-    from web.deployment.runtime import supervise_bot
+    from src.deployment.runtime import supervise_bot
 
     stop = asyncio.Event()
     marker = tmp_path / "marker"
@@ -222,7 +222,7 @@ async def test_supervise_bot_terminates_child_on_stop(tmp_path):
     import asyncio
     import sys
 
-    from web.deployment.runtime import supervise_bot
+    from src.deployment.runtime import supervise_bot
 
     stop = asyncio.Event()
     command = [sys.executable, "-c", "import time; time.sleep(30)"]
@@ -238,7 +238,7 @@ async def test_supervise_bot_resets_backoff_after_stable_run(tmp_path):
     import sys
     import time
 
-    from web.deployment.runtime import supervise_bot
+    from src.deployment.runtime import supervise_bot
 
     stop = asyncio.Event()
     restarts = tmp_path / "restarts"
@@ -272,7 +272,7 @@ async def test_supervise_bot_resets_backoff_after_stable_run(tmp_path):
 
 
 def test_detect_runtime_uses_deploy_mount(tmp_path, monkeypatch):
-    from web.deployment import runtime
+    from src.deployment import runtime
 
     (tmp_path / "compose.yaml").write_text(SOURCE, encoding="utf-8")
     monkeypatch.setattr(runtime, "PANEL_DEPLOY_MOUNT", str(tmp_path))
@@ -308,7 +308,7 @@ def test_short_password_is_accepted(tmp_path):
 
 def test_cli_flag_validation(monkeypatch):
     def run(*argv):
-        monkeypatch.setattr(sys, "argv", ["web.deployment", *argv])
+        monkeypatch.setattr(sys, "argv", ["src.deployment", *argv])
         main()
 
     with pytest.raises(SystemExit):

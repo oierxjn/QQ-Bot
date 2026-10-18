@@ -3,11 +3,11 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from src.deployment.app import create_app
+from src.deployment.auth import create_credentials
+from src.deployment.config import ComposeDocument, DeploymentError
+from src.deployment.runner import ComposeRunner
 from tests.test_deployment_config import SOURCE
-from web.deployment.app import create_app
-from web.deployment.auth import create_credentials
-from web.deployment.config import ComposeDocument, DeploymentError
-from web.deployment.runner import ComposeRunner
 
 
 class FakeRunner:

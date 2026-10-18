@@ -22,4 +22,4 @@ RUN uv sync --frozen --no-dev
 
 # The panel is the container's main process: it serves the web UI and
 # supervises the Bot as a child process.
-CMD ["python3", "-m", "web.deployment"]
+CMD ["python3", "-m", "src.deployment"]

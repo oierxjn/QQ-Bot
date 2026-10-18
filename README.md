@@ -98,7 +98,7 @@ uv run scripts/create_tables.py
 完成 `uv sync --no-dev` 后，运行部署面板即可自动初始化，并通过浏览器编辑五类 TOML 配置；面板不需要 Docker，也不依赖 QQ 登录或数据库连接。面板会拉起并守护 Bot，无需单独运行 `main.py`：
 
 ```bash
-uv run -m web.deployment
+uv run -m src.deployment
 ```
 
 初始化自动生成随机管理员密码，存于 `.webcontroller/initial-password`，首次成功登录后自动删除；同时只从模板补齐缺失文件，不覆盖已有配置。访问 `http://127.0.0.1:7001`。面板可用 `--bg` 后台运行、`--stop` 停止（面板与 Bot 一同停止）；长期运行建议编写 systemd 服务脚本，一个服务即可同时守护面板和 Bot。Windows 和 Linux 均支持，更多启动、密码重置及后台运行说明见 [WebController 文档](docs/webcontroller.md)。
