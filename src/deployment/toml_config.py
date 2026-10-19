@@ -11,30 +11,13 @@ from pathlib import Path
 import tomlkit
 from tomlkit.exceptions import ParseError
 
+from ..config_schema import BOT_SCHEMA, CONFIG_FILES
 from .config import MAX_SOURCE, DeploymentError, atomic_write
 
-CONFIG_NAMES = ("bot.toml", "plugins.toml", "groups.toml", "ai.toml", "scheduler.toml")
+CONFIG_NAMES = CONFIG_FILES
 BOT_FIELDS = {
-    "Init": {
-        "server_address": str,
-        "client_address": str,
-        "bot_name": str,
-        "debug": bool,
-        "database_enable": bool,
-        "database_username": str,
-        "database_address": str,
-        "database_passwd": str,
-        "database_name": str,
-        "owner_id": int,
-        "assistant_group": int,
-        "enable_webhook_handler": bool,
-    },
-    "Gitea": {
-        "webhook_handler_address": str,
-        "webhook_response_group": int,
-        "api_url": str,
-        "api_token": str,
-    },
+    section: {key: expected for key, (expected, _) in fields.items()}
+    for section, fields in BOT_SCHEMA.items()
 }
 
 

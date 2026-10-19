@@ -2,9 +2,7 @@ import difflib
 import hashlib
 import io
 import json
-import os
 import re
-import tempfile
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -12,6 +10,8 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
+
+from ..config_schema import atomic_write
 
 MAX_SOURCE = 1024 * 1024
 FORM_FIELDS = {
@@ -30,21 +30,6 @@ class DeploymentError(Exception):
     def __init__(self, message: str, status: int = 422):
         super().__init__(message)
         self.status = status
-
-
-def atomic_write(path: Path, source: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    descriptor, temporary = tempfile.mkstemp(prefix=".panel-", dir=path.parent)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as output:
-            output.write(source)
-            output.flush()
-            os.fsync(output.fileno())
-        os.chmod(temporary, 0o600)
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
 
 
 def plain(value, depth=0, budget=None):
